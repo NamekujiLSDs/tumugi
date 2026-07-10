@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Tumugi - Book Details</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700&amp;family=Inter:wght@400&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#ffffff",
+                        "inverse-surface": "#e5e1e4",
+                        "error-container": "#93000a",
+                        "tertiary-fixed": "#e3e1ea",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "on-secondary-container": "#b4b4bd",
+                        "error": "#ffb4ab",
+                        "surface-dim": "#131315",
+                        "on-tertiary-fixed": "#1b1b21",
+                        "background": "#131315",
+                        "inverse-on-surface": "#313032",
+                        "on-background": "#e5e1e4",
+                        "secondary-fixed": "#e2e1eb",
+                        "primary-fixed": "#e2e2e2",
+                        "on-error-container": "#ffdad6",
+                        "outline-variant": "#444748",
+                        "surface-tint": "#c6c6c7",
+                        "on-tertiary-container": "#64646b",
+                        "on-secondary-fixed": "#1a1b22",
+                        "on-primary-fixed-variant": "#454747",
+                        "outline": "#8e9192",
+                        "on-surface-variant": "#c4c7c8",
+                        "tertiary": "#ffffff",
+                        "on-primary": "#2f3131",
+                        "tertiary-container": "#e3e1ea",
+                        "secondary-container": "#45464e",
+                        "on-surface": "#e5e1e4",
+                        "surface-bright": "#39393b",
+                        "surface": "#131315",
+                        "on-secondary-fixed-variant": "#45464e",
+                        "on-error": "#690005",
+                        "surface-container": "#201f22",
+                        "surface-container-lowest": "#0e0e10",
+                        "on-secondary": "#2f3037",
+                        "secondary-fixed-dim": "#c6c6cf",
+                        "primary-container": "#e2e2e2",
+                        "on-tertiary": "#303037",
+                        "secondary": "#c6c6cf",
+                        "surface-container-high": "#2a2a2c",
+                        "on-primary-fixed": "#1a1c1c",
+                        "tertiary-fixed-dim": "#c7c5ce",
+                        "surface-variant": "#353437",
+                        "surface-container-low": "#1c1b1d",
+                        "inverse-primary": "#5d5f5f",
+                        "surface-container-highest": "#353437",
+                        "on-primary-container": "#636565",
+                        "on-tertiary-fixed-variant": "#46464d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "lg": "1.25rem",
+                        "xs": "0.25rem",
+                        "sm": "0.5rem",
+                        "xl": "2rem",
+                        "md": "0.75rem",
+                        "gutter": "1rem",
+                        "margin-safe": "1.25rem"
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "label-sm": ["JetBrains Mono"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg": ["32px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "1.1", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "headline-md": ["20px", { "lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-sm": ["11px", { "lineHeight": "1", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "body-lg": ["15px", { "lineHeight": "1.4", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+                        "body-md": ["13px", { "lineHeight": "1.4", "letterSpacing": "0", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #09090B; } /* Tonal Level 0 from Style Guidance */
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface h-screen w-screen overflow-hidden flex items-center justify-center relative">
+<!-- Faux Background Canvas (Bookshelf to give context to the modal overlay) -->
+<div aria-hidden="true" class="absolute inset-0 w-full h-full p-gutter grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-md overflow-hidden opacity-30 pointer-events-none">
+<!-- Replicating some book covers for background texture -->
+<div class="w-full aspect-[2/3] bg-surface-container-low border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container-highest border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-variant border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container-high border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container-lowest border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container-low border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-variant border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container-highest border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container-lowest border border-outline-variant rounded-lg"></div>
+<div class="w-full aspect-[2/3] bg-surface-container-high border border-outline-variant rounded-lg"></div>
+</div>
+<!-- Scrim (Dark Overlay) -->
+<div class="absolute inset-0 bg-background/80 backdrop-blur-[2px] z-40"></div>
+<!-- The Compact Book Details Modal -->
+<dialog class="relative z-50 bg-[#18181B] border border-[#27272A] rounded-xl text-on-surface shadow-[0px_4px_12px_rgba(0,0,0,0.5)] w-[90vw] max-w-[420px] p-0 m-0 overflow-hidden" open="">
+<!-- Header / Close Action -->
+<div class="flex justify-between items-start p-sm pb-0 border-b border-[#27272A]/50">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase px-xs pt-xs">Book Details</span>
+<button aria-label="Close modal" class="text-on-surface-variant hover:text-on-surface transition-colors p-xs">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<!-- Content Area -->
+<div class="flex flex-col p-sm gap-sm">
+<!-- Cover & Title Block -->
+<div class="flex gap-md items-start">
+<!-- Cover Image Placeholder -->
+<div class="w-[80px] shrink-0 aspect-[2/3] rounded-lg border border-[#27272A] overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover grayscale opacity-80" data-alt="A striking minimalist graphic design book cover featuring bold, generative geometric shapes in stark black and white. The title typography is integrated into the structural layout. Soft, high-key directional lighting creates subtle depth across the matte paper texture. The overall mood is precise, authoritative, and sophisticated, perfectly matching a dark-mode technical UI aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC4bA5dLjpfm3c_U99odsp0xhfX2Rz_fi7-8ycNLGTa6swS_N27ZOfGC3yBrcOs2Ex1T7kH0YVm8jdHxvMRe34v4SIXJhvqYD9RpqBdORyKLVjR4-73WxvgTni_Lm4xD35SwM5tjDynOteeowJ_nTJzjiNf5n-9OfLdCQF_PJ9Voa_WfzjB3Zf0We-JLj64e4XJFhpW4IjA9_vGskOeJbHeTEpT7YhVWIbFpPGCq1rvdLk6a6wSN9TfQsE4kG9Y3aWE1dHXX4oWjRU"/>
+</div>
+<!-- Core Info -->
+<div class="flex flex-col gap-xs pt-xs">
+<h2 class="font-headline-md text-headline-md leading-tight text-primary">The Architecture of Information</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">by Richard Saul Wurman</p>
+<!-- Chips -->
+<div class="flex gap-xs mt-xs flex-wrap">
+<span class="font-label-sm text-label-sm bg-surface-container px-xs py-[2px] rounded text-on-surface-variant border border-[#27272A]">EPUB</span>
+<span class="font-label-sm text-label-sm bg-surface-container px-xs py-[2px] rounded text-on-surface-variant border border-[#27272A]">1.2 MB</span>
+</div>
+</div>
+</div>
+<!-- Metadata Table (Bento/Tight Layout) -->
+<div class="bg-surface-container-low border border-[#27272A] rounded-lg p-sm grid grid-cols-2 gap-y-sm gap-x-md mt-xs">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline mb-[2px]">PROGRESS</span>
+<div class="flex items-center gap-xs">
+<span class="font-body-md text-body-md font-medium text-primary">42%</span>
+<!-- Mini Progress Bar -->
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[42%]"></div>
+</div>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline mb-[2px]">LAST READ</span>
+<span class="font-body-md text-body-md text-primary">2 hours ago</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline mb-[2px]">ADDED</span>
+<span class="font-body-md text-body-md text-primary">Oct 12, 2023</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline mb-[2px]">COLLECTION</span>
+<span class="font-body-md text-body-md text-primary flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">folder</span> Design
+                    </span>
+</div>
+</div>
+<!-- Actions -->
+<div class="flex gap-sm pt-xs mt-xs">
+<!-- Primary Action -->
+<button class="flex-1 bg-primary text-on-primary h-[32px] rounded-lg font-body-md text-body-md font-medium flex items-center justify-center gap-xs hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-[16px] data-weight=fill" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+                    Continue Reading
+                </button>
+<!-- Secondary/Destructive Action -->
+<button class="h-[32px] px-sm border border-[#27272A] text-on-surface-variant hover:text-error hover:border-error/50 rounded-lg font-body-md text-body-md flex items-center justify-center transition-colors group" title="Delete">
+<span class="material-symbols-outlined text-[16px] group-hover:hidden">delete</span>
+<span class="hidden group-hover:inline ml-xs font-medium">Delete</span>
+</button>
+</div>
+</div>
+</dialog>
+</body></html>

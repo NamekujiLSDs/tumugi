@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Tumugi - Sync Status</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700&amp;family=Inter:wght@400&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#ffffff",
+                        "inverse-surface": "#e5e1e4",
+                        "error-container": "#93000a",
+                        "tertiary-fixed": "#e3e1ea",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "on-secondary-container": "#b4b4bd",
+                        "error": "#ffb4ab",
+                        "surface-dim": "#131315",
+                        "on-tertiary-fixed": "#1b1b21",
+                        "background": "#131315",
+                        "inverse-on-surface": "#313032",
+                        "on-background": "#e5e1e4",
+                        "secondary-fixed": "#e2e1eb",
+                        "primary-fixed": "#e2e2e2",
+                        "on-error-container": "#ffdad6",
+                        "outline-variant": "#444748",
+                        "surface-tint": "#c6c6c7",
+                        "on-tertiary-container": "#64646b",
+                        "on-secondary-fixed": "#1a1b22",
+                        "on-primary-fixed-variant": "#454747",
+                        "outline": "#8e9192",
+                        "on-surface-variant": "#c4c7c8",
+                        "tertiary": "#ffffff",
+                        "on-primary": "#2f3131",
+                        "tertiary-container": "#e3e1ea",
+                        "secondary-container": "#45464e",
+                        "on-surface": "#e5e1e4",
+                        "surface-bright": "#39393b",
+                        "surface": "#131315",
+                        "on-secondary-fixed-variant": "#45464e",
+                        "on-error": "#690005",
+                        "surface-container": "#201f22",
+                        "surface-container-lowest": "#0e0e10",
+                        "on-secondary": "#2f3037",
+                        "secondary-fixed-dim": "#c6c6cf",
+                        "primary-container": "#e2e2e2",
+                        "on-tertiary": "#303037",
+                        "secondary": "#c6c6cf",
+                        "surface-container-high": "#2a2a2c",
+                        "on-primary-fixed": "#1a1c1c",
+                        "tertiary-fixed-dim": "#c7c5ce",
+                        "surface-variant": "#353437",
+                        "surface-container-low": "#1c1b1d",
+                        "inverse-primary": "#5d5f5f",
+                        "surface-container-highest": "#353437",
+                        "on-primary-container": "#636565",
+                        "on-tertiary-fixed-variant": "#46464d"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "lg": "1.25rem",
+                        "xs": "0.25rem",
+                        "sm": "0.5rem",
+                        "xl": "2rem",
+                        "md": "0.75rem",
+                        "gutter": "1rem",
+                        "margin-safe": "1.25rem"
+                    },
+                    fontFamily: {
+                        "headline-lg": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "label-sm": ["JetBrains Mono"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    fontSize: {
+                        "headline-lg": ["32px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "1.1", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "headline-md": ["20px", { "lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-sm": ["11px", { "lineHeight": "1", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "body-lg": ["15px", { "lineHeight": "1.4", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+                        "body-md": ["13px", { "lineHeight": "1.4", "letterSpacing": "0", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col md:flex-row">
+<!-- NavigationDrawer (Desktop) -->
+<nav class="hidden md:flex flex-col h-screen w-64 bg-surface-container-low border-r border-outline-variant shadow-sm p-md shrink-0 sticky top-0">
+<div class="mb-lg px-sm">
+<h1 class="font-headline-md text-headline-md text-primary font-bold">Tumugi Reader</h1>
+</div>
+<ul class="flex-1 space-y-xs">
+<li>
+<a class="flex items-center gap-sm px-sm py-sm rounded-sm text-on-surface-variant hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-lg">menu_book</span>
+<span>All Books</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-sm px-sm py-sm rounded-sm text-on-surface-variant hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-lg">star</span>
+<span>Favorites</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-sm px-sm py-sm rounded-sm text-on-surface-variant hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-lg">bookmark</span>
+<span>To Read</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-sm px-sm py-sm rounded-sm text-on-surface-variant hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-lg">check_circle</span>
+<span>Finished</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-sm px-sm py-sm rounded-sm text-on-surface-variant hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-lg">collections_bookmark</span>
+<span>Collections</span>
+</a>
+</li>
+</ul>
+<div class="mt-auto border-t border-outline-variant pt-sm">
+<a class="flex items-center gap-sm px-sm py-sm rounded-sm text-primary font-bold bg-surface-container-highest transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-lg">folder</span>
+<span>Folders</span>
+</a>
+<a class="flex items-center gap-sm px-sm py-sm rounded-sm text-on-surface-variant hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-lg">settings</span>
+<span>Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<div class="flex-1 flex flex-col min-h-screen relative pb-16 md:pb-0">
+<!-- TopAppBar -->
+<header class="w-full top-0 sticky bg-surface border-b border-outline-variant z-40 flex items-center justify-between px-gutter py-sm">
+<div class="flex items-center gap-sm">
+<button class="md:hidden p-xs text-on-surface-variant hover:bg-surface-container-high rounded-sm transition-opacity duration-200 active:opacity-70">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface">Tumugi</h1>
+</div>
+<button class="p-xs text-on-surface-variant hover:bg-surface-container-high rounded-sm transition-opacity duration-200 active:opacity-70">
+<span class="material-symbols-outlined">search</span>
+</button>
+</header>
+<!-- Page Content -->
+<main class="flex-1 p-gutter md:px-lg max-w-5xl mx-auto w-full">
+<div class="flex items-center justify-between mb-sm mt-xs">
+<div>
+<h2 class="font-headline-md text-headline-md-mobile md:text-headline-md text-primary font-bold">Sync Status</h2>
+<p class="text-on-surface-variant text-label-sm font-label-sm mt-xs">Monitoring 4 active directories</p>
+</div>
+<div class="flex gap-sm">
+<button class="h-8 px-sm flex items-center gap-xs border border-outline-variant rounded-lg text-on-surface hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[16px]">refresh</span>
+<span class="font-label-sm text-label-sm">Rescan</span>
+</button>
+<button class="h-8 px-sm flex items-center gap-xs bg-primary text-on-primary rounded-lg hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[16px]">add</span>
+<span class="font-label-sm text-label-sm">Add Folder</span>
+</button>
+</div>
+</div>
+<!-- Global Status Bar -->
+<div class="bg-surface-container-low border border-outline-variant rounded-lg p-sm mb-md flex items-center justify-between">
+<div class="flex items-center gap-sm">
+<div class="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></div>
+<span class="font-label-sm text-label-sm text-on-surface">Engine Active</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">
+                    Last sync: 2 mins ago
+                </div>
+</div>
+<!-- Monitored Folders List -->
+<div class="bg-[#18181B] border border-[#27272A] rounded-lg overflow-hidden">
+<!-- Table Header -->
+<div class="grid grid-cols-12 gap-sm px-sm py-xs border-b border-[#27272A] bg-surface-container-lowest font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
+<div class="col-span-5 md:col-span-6">Path</div>
+<div class="col-span-4 md:col-span-3">Status</div>
+<div class="col-span-3 md:col-span-3 text-right">Items</div>
+</div>
+<!-- List Items -->
+<div class="divide-y divide-[#27272A]">
+<!-- Item 1: Scanning -->
+<div class="grid grid-cols-12 gap-sm px-sm py-sm items-center hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="col-span-5 md:col-span-6 flex items-center gap-sm overflow-hidden">
+<span class="material-symbols-outlined text-primary-fixed-dim text-[18px] shrink-0" style="font-variation-settings: 'FILL' 1;">folder</span>
+<span class="font-body-md text-body-md text-primary truncate">/Volumes/Manga Archive/Ongoing</span>
+</div>
+<div class="col-span-4 md:col-span-3 flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px] text-tertiary-fixed-dim animate-spin">sync</span>
+<span class="font-label-sm text-label-sm text-on-surface">Scanning (45%)</span>
+</div>
+<div class="col-span-3 md:col-span-3 text-right flex items-center justify-end gap-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-xs py-[2px] rounded">1,204</span>
+<button class="opacity-0 group-hover:opacity-100 text-on-surface-variant hover:text-on-surface transition-opacity shrink-0">
+<span class="material-symbols-outlined text-[16px]">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Item 2: Synced -->
+<div class="grid grid-cols-12 gap-sm px-sm py-sm items-center hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="col-span-5 md:col-span-6 flex items-center gap-sm overflow-hidden">
+<span class="material-symbols-outlined text-primary-fixed-dim text-[18px] shrink-0" style="font-variation-settings: 'FILL' 1;">folder</span>
+<span class="font-body-md text-body-md text-primary truncate">/Users/local/Downloads/To Read</span>
+</div>
+<div class="col-span-4 md:col-span-3 flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px] text-[#10b981]">check_circle</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Synced</span>
+</div>
+<div class="col-span-3 md:col-span-3 text-right flex items-center justify-end gap-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-xs py-[2px] rounded">42</span>
+<button class="opacity-0 group-hover:opacity-100 text-on-surface-variant hover:text-on-surface transition-opacity shrink-0">
+<span class="material-symbols-outlined text-[16px]">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Item 3: Error -->
+<div class="grid grid-cols-12 gap-sm px-sm py-sm items-center hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="col-span-5 md:col-span-6 flex items-center gap-sm overflow-hidden">
+<span class="material-symbols-outlined text-error text-[18px] shrink-0" style="font-variation-settings: 'FILL' 1;">folder_off</span>
+<span class="font-body-md text-body-md text-error truncate">/Volumes/NAS/Completed</span>
+</div>
+<div class="col-span-4 md:col-span-3 flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px] text-error">error</span>
+<span class="font-label-sm text-label-sm text-error">Permissions Err</span>
+</div>
+<div class="col-span-3 md:col-span-3 text-right flex items-center justify-end gap-sm">
+<span class="font-label-sm text-label-sm text-error bg-error-container text-on-error-container px-xs py-[2px] rounded">0</span>
+<button class="opacity-0 group-hover:opacity-100 text-on-surface-variant hover:text-on-surface transition-opacity shrink-0">
+<span class="material-symbols-outlined text-[16px]">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Item 4: Synced -->
+<div class="grid grid-cols-12 gap-sm px-sm py-sm items-center hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="col-span-5 md:col-span-6 flex items-center gap-sm overflow-hidden">
+<span class="material-symbols-outlined text-primary-fixed-dim text-[18px] shrink-0" style="font-variation-settings: 'FILL' 1;">folder</span>
+<span class="font-body-md text-body-md text-primary truncate">/Users/local/Documents/Light Novels</span>
+</div>
+<div class="col-span-4 md:col-span-3 flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px] text-[#10b981]">check_circle</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Synced</span>
+</div>
+<div class="col-span-3 md:col-span-3 text-right flex items-center justify-end gap-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-xs py-[2px] rounded">156</span>
+<button class="opacity-0 group-hover:opacity-100 text-on-surface-variant hover:text-on-surface transition-opacity shrink-0">
+<span class="material-symbols-outlined text-[16px]">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Quick Logs -->
+<div class="mt-md border border-[#27272A] rounded-lg bg-[#131315] p-sm font-label-sm text-label-sm h-32 overflow-y-auto">
+<div class="text-on-surface-variant mb-xs">[14:02:41] SYS: Engine started.</div>
+<div class="text-on-surface-variant mb-xs">[14:02:42] SCAN: /Volumes/Manga Archive/Ongoing initiated.</div>
+<div class="text-error mb-xs">[14:02:45] ERR: Access denied reading /Volumes/NAS/Completed.</div>
+<div class="text-on-surface-variant">[14:03:01] SCAN: Processing block 4/12...</div>
+</div>
+</main>
+</div>
+<!-- BottomNavBar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-sm pb-safe h-12 bg-surface-container border-t border-outline-variant">
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-xs py-xs hover:text-on-surface scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined">library_books</span>
+<span class="font-label-sm text-label-sm">Library</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-xs py-xs hover:text-on-surface scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-sm text-label-sm">Recent</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary bg-secondary-container rounded-lg px-xs py-xs hover:text-on-surface scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined">folder</span>
+<span class="font-label-sm text-label-sm">Folders</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-xs py-xs hover:text-on-surface scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-sm text-label-sm">Settings</span>
+</a>
+</nav>
+</body></html>
