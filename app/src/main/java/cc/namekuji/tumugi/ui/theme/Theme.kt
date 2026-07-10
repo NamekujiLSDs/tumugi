@@ -27,6 +27,14 @@ val SharpShapes = Shapes(
     extraLarge = RoundedCornerShape(0.dp)
 )
 
+fun isColorLight(color: Color): Boolean {
+    val r = color.red
+    val g = color.green
+    val b = color.blue
+    val luminance = 0.2126f * r + 0.7152f * g + 0.0722f * b
+    return luminance > 0.5f
+}
+
 fun getCustomColorScheme(accentColorHex: String, isDark: Boolean, isBlack: Boolean): ColorScheme {
     val resolvedAccent = if (accentColorHex.lowercase() == "#6650a4") {
         if (isDark) "#ffffff" else "#000000"
@@ -45,44 +53,85 @@ fun getCustomColorScheme(accentColorHex: String, isDark: Boolean, isBlack: Boole
         primaryColor = Color.Black
     }
 
+    val onPrimaryColor = if (isColorLight(primaryColor)) Color.Black else Color.White
+
     return if (isBlack) {
         darkColorScheme(
             primary = primaryColor,
+            onPrimary = onPrimaryColor,
+            primaryContainer = primaryColor.copy(alpha = 0.15f),
+            onPrimaryContainer = primaryColor,
             secondary = primaryColor.copy(alpha = 0.8f),
+            onSecondary = onPrimaryColor,
+            secondaryContainer = primaryColor.copy(alpha = 0.10f),
+            onSecondaryContainer = primaryColor,
             tertiary = primaryColor.copy(alpha = 0.6f),
+            onTertiary = onPrimaryColor,
+            tertiaryContainer = primaryColor.copy(alpha = 0.05f),
+            onTertiaryContainer = primaryColor,
             background = Color.Black,
-            surface = Color.Black,
-            surfaceVariant = Color(0xFF121212),
             onBackground = Color.White,
+            surface = Color.Black,
             onSurface = Color.White,
+            surfaceVariant = Color(0xFF121212),
             onSurfaceVariant = Color(0xFFCCCCCC),
-            outline = Color(0xFF424242)
+            outline = Color(0xFF424242),
+            error = Color(0xFFFFB4AB),
+            onError = Color(0xFF690005),
+            errorContainer = Color(0xFF93000A),
+            onErrorContainer = Color(0xFFFFDAD6)
         )
     } else if (isDark) {
         darkColorScheme(
             primary = primaryColor,
+            onPrimary = onPrimaryColor,
+            primaryContainer = primaryColor.copy(alpha = 0.15f),
+            onPrimaryContainer = primaryColor,
             secondary = primaryColor.copy(alpha = 0.8f),
+            onSecondary = onPrimaryColor,
+            secondaryContainer = primaryColor.copy(alpha = 0.10f),
+            onSecondaryContainer = primaryColor,
             tertiary = primaryColor.copy(alpha = 0.6f),
+            onTertiary = onPrimaryColor,
+            tertiaryContainer = primaryColor.copy(alpha = 0.05f),
+            onTertiaryContainer = primaryColor,
             background = Color(0xFF121212),
-            surface = Color(0xFF1E1E1E),
-            surfaceVariant = Color(0xFF2C2C2C),
             onBackground = Color(0xFFECEFF1),
+            surface = Color(0xFF1E1E1E),
             onSurface = Color(0xFFECEFF1),
+            surfaceVariant = Color(0xFF2C2C2C),
             onSurfaceVariant = Color(0xFFB0BEC5),
-            outline = Color(0xFF37474F)
+            outline = Color(0xFF37474F),
+            error = Color(0xFFFFB4AB),
+            onError = Color(0xFF690005),
+            errorContainer = Color(0xFF93000A),
+            onErrorContainer = Color(0xFFFFDAD6)
         )
     } else {
         lightColorScheme(
             primary = primaryColor,
+            onPrimary = onPrimaryColor,
+            primaryContainer = primaryColor.copy(alpha = 0.12f),
+            onPrimaryContainer = primaryColor,
             secondary = primaryColor.copy(alpha = 0.8f),
+            onSecondary = onPrimaryColor,
+            secondaryContainer = primaryColor.copy(alpha = 0.08f),
+            onSecondaryContainer = primaryColor,
             tertiary = primaryColor.copy(alpha = 0.6f),
+            onTertiary = onPrimaryColor,
+            tertiaryContainer = primaryColor.copy(alpha = 0.04f),
+            onTertiaryContainer = primaryColor,
             background = Color.White,
-            surface = Color(0xFFF5F5F5),
-            surfaceVariant = Color(0xFFEEEEEE),
             onBackground = Color(0xFF212121),
+            surface = Color(0xFFF5F5F5),
             onSurface = Color(0xFF212121),
+            surfaceVariant = Color(0xFFEEEEEE),
             onSurfaceVariant = Color(0xFF757575),
-            outline = Color(0xFFBDBDBD)
+            outline = Color(0xFFBDBDBD),
+            error = Color(0xFFBA1A1A),
+            onError = Color(0xFFFFFFFF),
+            errorContainer = Color(0xFFFFDAD6),
+            onErrorContainer = Color(0xFF410002)
         )
     }
 }
