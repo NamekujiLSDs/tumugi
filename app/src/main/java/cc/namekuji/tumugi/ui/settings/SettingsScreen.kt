@@ -262,7 +262,7 @@ fun SettingsScreen(
                 CategoryCard("ライブラリ同期 (Sync)", "書籍ソースフォルダの登録、同期ステータスの確認、ライブラリスキャン") {
                     activeCategory = SettingsCategory.SYNC
                 }
-                CategoryCard("読書操作・連携 (Reader Controls)", "タップ領域判定、音量キー操作、クイックメニュータイル、連携辞書アプリ設定") {
+                CategoryCard("読書操作・連携 (Reader Controls)", "タップ領域判定、音量キー操作、クイックメニュータイル設定") {
                     activeCategory = SettingsCategory.READER
                 }
                 CategoryCard("EPUB 読書設定 (EPUB layout)", "表示方向、フォントサイズ、行間、余白、ルビ、カスタムCSSなどの小説設定") {
@@ -871,42 +871,6 @@ fun SettingsScreen(
                                 viewModel.updateSettings(currentSettings.copy(quickMenuRows = newRows))
                             }
                         )
-
-                        HorizontalDivider()
-
-                        SectionHeader(title = "推奨外部辞書・翻訳連携")
-                        Text(
-                            text = "EPUB読書中にテキストを長押しして選択した際、直接起動できるアプリを設定します。",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        val dicts = listOf(
-                            "EBPocket (EPWING辞書ビューア)" to "info.ebstudio.ebpocket",
-                            "Aedict (日本語学習・和英辞書)" to "sk.baka.aedict3",
-                            "Google 翻訳" to "com.google.android.apps.translate"
-                        )
-                        dicts.forEach { (name, pkg) ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(text = name, modifier = Modifier.weight(1f), fontSize = 13.sp)
-                                TextButton(onClick = {
-                                    try {
-                                        val intent = context.packageManager.getLaunchIntentForPackage(pkg)
-                                        if (intent != null) {
-                                            context.startActivity(intent)
-                                        } else {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")))
-                                        }
-                                    } catch (e: Exception) {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")))
-                                    }
-                                }) {
-                                    Text("起動 / 取得")
-                                }
-                            }
-                        }
                     }
 
                     SettingsCategory.EPUB -> {

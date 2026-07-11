@@ -65,6 +65,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import cc.namekuji.tumugi.data.*
 import cc.namekuji.tumugi.model.EpubChapter
 import cc.namekuji.tumugi.ui.settings.HexColorPicker
@@ -375,6 +377,8 @@ fun EpubContentView(
     var startX by remember { mutableStateOf(0f) }
     var startY by remember { mutableStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
+    var startedAtEdgeBack by remember { mutableStateOf(false) }
+    var startedAtEdgeFwd by remember { mutableStateOf(false) }
 
     val calculateProgress = remember {
         { dragDistance: Float ->
@@ -416,9 +420,7 @@ fun EpubContentView(
     // ページロード＋スクロール初期化完了状態
     var isPageReady by remember { mutableStateOf(false) }
 
-    var selectedText by remember { mutableStateOf("") }
-    var showBookmarkDialog by remember { mutableStateOf(false) }
-    var bookmarkNoteInput by remember { mutableStateOf("") }
+
 
     var autoScrollCountdown by remember { mutableStateOf(0) }
     LaunchedEffect(settings.enableAutoScroll) {
@@ -612,58 +614,52 @@ fun EpubContentView(
             """.trimIndent()
         }
 
-        val fullHtml = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                <style>
-                    $selector {
-                        font-size: ${settings.epubFontSize}px$imp;
-                        line-height: ${settings.epubLineSpacing}$imp;
-                        color: $textColor$imp;
-                    }
-                    rt {
-                        font-size: ${settings.epubRubySize}em$imp;
-                        /* ルビ切り替え */
-                        display: ${if (settings.epubRubySize == 0.0f) "none" else "ruby-text"}$imp;
-                    }
-                    ${if (settings.enableNightEyeStrainMode) {
-                        """
-                        body, body * {
-                            background-color: #000000 !important;
-                            color: #FF3B30 !important;
-                        }
-                        """.trimIndent()
-                    } else ""}
-                    img {
-                        max-width: 100%;
-                        height: auto;
-                    }
-                    $backgroundCss
-                    $customFontCss
-                    $directionCss
-                    /* Custom CSS */
-                    ${settings.epubCustomCss}
-                </style>
-            </head>
-            <body>
-                $htmlContent
-                <script>
-                    document.addEventListener('selectionchange', function() {
-                        var selection = window.getSelection().toString().trim();
-                        if (selection.length > 0) {
-                            Android.onTextSelected(selection);
-                        } else {
-                            Android.onSelectionCleared();
-                        }
-                    });
-                </script>
-            </body>
-            </html>
+        val viewportTag = """<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">"""
+        val styleTag = """
+            <style>
+                * {
+                    -webkit-user-select: text !important;
+                    user-select: text !important;
+                }
+                ::selection {
+                    background: rgba(128, 128, 128, 0.3) !important;
+                }
+                ::-webkit-selection {
+                    background: rgba(128, 128, 128, 0.3) !important;
+                }
+                $selector {
+                    font-size: ${settings.epubFontSize}px$imp;
+                    line-height: ${settings.epubLineSpacing}$imp;
+                    color: $textColor$imp;
+                }
+                rt {
+                    font-size: ${settings.epubRubySize}em$imp;
+                    display: ${if (settings.epubRubySize == 0.0f) "none" else "ruby-text"}$imp;
+                }
+                ${if (settings.enableNightEyeStrainMode) "body, body * { background-color: #000000 !important; color: #FF3B30 !important; }" else ""}
+                img {
+                    max-width: 100%;
+                    height: auto;
+                }
+                $backgroundCss
+                $customFontCss
+                $directionCss
+                /* Custom CSS */
+                ${settings.epubCustomCss}
+            </style>
         """.trimIndent()
 
-        webView.loadDataWithBaseURL("file:///", fullHtml, "text/html", "UTF-8", null)
+        var processedHtml = htmlContent
+        val headContent = "$viewportTag\n$styleTag"
+        if (processedHtml.contains("</head>", ignoreCase = true)) {
+            processedHtml = processedHtml.replace("</head>", "$headContent</head>", ignoreCase = true)
+        } else if (processedHtml.contains("<head>", ignoreCase = true)) {
+            processedHtml = processedHtml.replace("<head>", "<head>$headContent", ignoreCase = true)
+        } else {
+            processedHtml = "$headContent$processedHtml"
+        }
+
+        webView.loadDataWithBaseURL("file:///", processedHtml, "text/html", "UTF-8", null)
     }
 
     val bgColor = settings.epubBackgroundColor
@@ -674,15 +670,6 @@ fun EpubContentView(
             factory = { ctx ->
                 WebView(ctx).apply {
                     webViewInstance = this
-                    // WebViewのデバッグを有効化（Chromeデベロッパーツール接続用）
-                    WebView.setWebContentsDebuggingEnabled(true)
-                    addJavascriptInterface(
-                        WebAppInterface(
-                            onTextSelected = { text -> selectedText = text },
-                            onSelectionCleared = { selectedText = "" }
-                        ),
-                        "Android"
-                    )
                     // WebViewのデバッグを有効化（Chromeデベロッパーツール接続用）
                     WebView.setWebContentsDebuggingEnabled(true)
                     
@@ -696,6 +683,8 @@ fun EpubContentView(
                     isHorizontalScrollBarEnabled = true
                     isVerticalScrollBarEnabled = true
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    isFocusable = true
+                    isFocusableInTouchMode = true
                     addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                         val densityVal = resources.displayMetrics.density
                         val w = (width / densityVal).toInt()
@@ -970,16 +959,20 @@ fun EpubContentView(
                             pullDirection = 0
                             pullAmount = 0f
                             pullProgress = 0f
+                            startedAtEdgeBack = if (isVertical) {
+                                !v.canScrollHorizontally(1) // rightmost is start of chapter (prev)
+                            } else {
+                                !v.canScrollVertically(-1) // top is start of chapter (prev)
+                            }
+                            startedAtEdgeFwd = if (isVertical) {
+                                !v.canScrollHorizontally(-1) // leftmost is end of chapter (next)
+                            } else {
+                                !v.canScrollVertically(1) // bottom is end of chapter (next)
+                            }
                         }
                         android.view.MotionEvent.ACTION_MOVE -> {
                             val dx = event.x - startX
                             val dy = event.y - startY
-                            val canScrollBack = if (isVertical) v.canScrollHorizontally(-1) else v.canScrollVertically(-1)
-                            val canScrollFwd = if (isVertical) v.canScrollHorizontally(1) else v.canScrollVertically(1)
-
-                            // コンテンツが端に達しているかどうかをチェック
-                            val draggingBack = if (isVertical) dx > 0 else dy > 0
-                            val draggingFwd = if (isVertical) dx < 0 else dy < 0
 
                             // 縦スクロールと横スクロールの誤爆を防ぐため、ドミナント方向を判定
                             val isCorrectDirection = if (isVertical) {
@@ -989,14 +982,17 @@ fun EpubContentView(
                             }
 
                             if (isCorrectDirection) {
-                                if (draggingBack && !canScrollBack) {
-                                    val rawDist = if (isVertical) dx.coerceAtLeast(0f) else dy.coerceAtLeast(0f)
+                                val draggingBack = if (isVertical) dx < 0 else dy > 0
+                                val draggingFwd = if (isVertical) dx > 0 else dy < 0
+
+                                if (draggingBack && startedAtEdgeBack) {
+                                    val rawDist = if (isVertical) dx.coerceAtMost(0f) * -1f else dy.coerceAtLeast(0f)
                                     pullDirection = 1
                                     pullAmount = rawDist
                                     pullProgress = calculateProgress(rawDist)
                                     isDragging = true
-                                } else if (draggingFwd && !canScrollFwd) {
-                                    val rawDist = if (isVertical) dx.coerceAtMost(0f) * -1f else dy.coerceAtMost(0f) * -1f
+                                } else if (draggingFwd && startedAtEdgeFwd) {
+                                    val rawDist = if (isVertical) dx.coerceAtLeast(0f) else dy.coerceAtMost(0f) * -1f
                                     pullDirection = 2
                                     pullAmount = rawDist
                                     pullProgress = calculateProgress(rawDist)
@@ -1057,158 +1053,7 @@ fun EpubContentView(
             }
         }
 
-        // テキスト選択コンテキストポップアップ
-        if (selectedText.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 80.dp),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceColorAtElevation(8.dp),
-                    shape = RectangleShape,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .wrapContentHeight()
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Text(
-                            text = "選択: \"$selectedText\"",
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            TextButton(
-                                onClick = { showBookmarkDialog = true },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text("付箋登録", fontSize = 10.sp)
-                            }
-                            TextButton(
-                                onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://ja.wikipedia.org/wiki/${java.net.URLEncoder.encode(selectedText, "UTF-8")}"))
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text("Wikipedia", fontSize = 10.sp)
-                            }
-                            TextButton(
-                                onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${java.net.URLEncoder.encode(selectedText, "UTF-8")}"))
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text("Google", fontSize = 10.sp)
-                            }
-                            TextButton(
-                                onClick = {
-                                    val pm = context.packageManager
-                                    val dictPackage = listOf(
-                                        "info.ebstudio.ebpocket",
-                                        "info.ebstudio.ebpocketpro",
-                                        "sk.baka.aedict3",
-                                        "sk.baka.aedict"
-                                    ).firstOrNull { pkg ->
-                                        try {
-                                            pm.getPackageInfo(pkg, 0)
-                                            true
-                                        } catch (e: Exception) {
-                                            false
-                                        }
-                                    }
-                                    if (dictPackage != null) {
-                                        val intent = Intent(Intent.ACTION_SEND).apply {
-                                            `package` = dictPackage
-                                            type = "text/plain"
-                                            putExtra(Intent.EXTRA_TEXT, selectedText)
-                                        }
-                                        context.startActivity(intent)
-                                    } else {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=info.ebstudio.ebpocket"))
-                                        context.startActivity(intent)
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text("辞書", fontSize = 10.sp)
-                            }
-                            TextButton(
-                                onClick = {
-                                    val pm = context.packageManager
-                                    val translatePkg = "com.google.android.apps.translate"
-                                    val isTranslateInstalled = try {
-                                        pm.getPackageInfo(translatePkg, 0)
-                                        true
-                                    } catch (e: Exception) {
-                                        false
-                                    }
-                                    if (isTranslateInstalled) {
-                                        val intent = Intent(Intent.ACTION_SEND).apply {
-                                            `package` = translatePkg
-                                            type = "text/plain"
-                                            putExtra(Intent.EXTRA_TEXT, selectedText)
-                                        }
-                                        context.startActivity(intent)
-                                    } else {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://translate.google.com/?sl=auto&tl=ja&text=${java.net.URLEncoder.encode(selectedText, "UTF-8")}&op=translate"))
-                                        context.startActivity(intent)
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text("翻訳", fontSize = 10.sp)
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
-        // 付箋/メモしおり登録ダイアログ
-        if (showBookmarkDialog) {
-            AlertDialog(
-                onDismissRequest = { showBookmarkDialog = false; bookmarkNoteInput = "" },
-                title = { Text("付箋（メモ付きしおり）の登録") },
-                text = {
-                    OutlinedTextField(
-                        value = bookmarkNoteInput,
-                        onValueChange = { bookmarkNoteInput = it },
-                        label = { Text("メモ") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        onAddMemoBookmark(selectedText, bookmarkNoteInput)
-                        showBookmarkDialog = false
-                        bookmarkNoteInput = ""
-                        selectedText = "" // 選択解除
-                    }) {
-                        Text("登録")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showBookmarkDialog = false; bookmarkNoteInput = "" }) {
-                        Text("キャンセル")
-                    }
-                },
-                shape = RectangleShape
-            )
-        }
 
         // 自動スクロールカウントダウンオーバーレイ
         if (autoScrollCountdown > 0) {
@@ -1294,8 +1139,8 @@ fun EpubContentView(
         if (pullDirection != 0) {
             val isVertical = settings.epubDirection == EpubDirection.VERTICAL
             val alignment = when {
-                isVertical && pullDirection == 1 -> Alignment.CenterStart
-                isVertical && pullDirection == 2 -> Alignment.CenterEnd
+                isVertical && pullDirection == 1 -> Alignment.CenterEnd
+                isVertical && pullDirection == 2 -> Alignment.CenterStart
                 !isVertical && pullDirection == 1 -> Alignment.TopCenter
                 else -> Alignment.BottomCenter
             }
@@ -3394,4 +3239,6 @@ fun getPageNavigationJs(isForward: Boolean, isVertical: Boolean, stepExpr: Strin
         }
     }
 }
+
+
 
