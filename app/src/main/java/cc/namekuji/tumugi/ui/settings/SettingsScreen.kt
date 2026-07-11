@@ -6,17 +6,29 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,17 +38,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import cc.namekuji.tumugi.data.*
+import cc.namekuji.tumugi.ui.sync.FolderSyncViewModel
 import kotlinx.coroutines.launch
 import java.io.File
 
 enum class SettingsCategory {
-    GENERAL, EPUB, CBZ, OTHER
+    GENERAL, SYNC, READER, EPUB, CBZ, WIDGET, SYSTEM
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,65 +74,103 @@ fun SettingsScreen(
         activeCategory = null
     }
 
-    // On entering MAINTENANCE category, calculate cache size
+    // On entering SYSTEM category, calculate cache size
     LaunchedEffect(activeCategory) {
-        if (activeCategory == SettingsCategory.OTHER) {
+        if (activeCategory == SettingsCategory.SYSTEM) {
             viewModel.calculateCacheSize(context)
         }
     }
 
-    // フォント一覧（フォントフォルダ内のファイルを列挙）
-    val fontFiles: List<Pair<String, String>> = remember(settings.epubFontFolderUri) {
-        val folderUri = settings.epubFontFolderUri ?: return@remember emptyList()
-        try {
-            val docFile = DocumentFile.fromTreeUri(context, Uri.parse(folderUri))
-                ?: return@remember emptyList()
-            docFile.listFiles()
-                .filter { it.isFile && (it.name?.lowercase()?.endsWith(".ttf") == true ||
-                        it.name?.lowercase()?.endsWith(".otf") == true) }
-                .mapNotNull { f -> f.name?.let { name -> name to f.uri.toString() } }
-                .sortedBy { it.first }
-        } catch (e: Exception) {
-            emptyList()
+    // Extract detected font files in font folders if EPUB is active
+    val fontFiles = remember(settings?.epubFontFolderUri) {
+        val list = mutableListOf<String>()
+        val uriStr = settings?.epubFontFolderUri
+        if (uriStr != null) {
+            try {
+                val folder = DocumentFile.fromTreeUri(context, Uri.parse(uriStr))
+                folder?.listFiles()?.forEach { file ->
+                    if (file.isFile && (file.name?.endsWith(".ttf", true) == true || file.name?.endsWith(".otf", true) == true)) {
+                        file.name?.let { list.add(it) }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
+        list
     }
 
-    // フォントフォルダ選択ランチャー
+    // SAF Font Folder Picker
     val fontFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri != null) {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-                viewModel.updateSettings(
-                    settings.copy(epubFontFolderUri = uri.toString(), epubCustomFontUri = null)
-                )
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                    settings?.let {
+                        viewModel.updateSettings(it.copy(epubFontFolderUri = uri.toString()))
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "フォントフォルダの登録に失敗しました", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     )
 
-    // 背景画像ピッカーランチャー
-    val bgPickerLauncher = rememberLauncherForActivityResult(
+    // SAF Font Single File Picker
+    val fontFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
-            uri?.let {
-                viewModel.updateSettings(settings.copy(epubBackgroundImageUri = it.toString()))
+            if (uri != null) {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                    settings?.let {
+                        viewModel.updateSettings(it.copy(epubCustomFontUri = uri.toString()))
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "フォントの登録に失敗しました", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     )
 
-    // バックアップ＆復元 SAF ランチャー
+    // SAF Background Image Picker
+    val backgroundImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            if (uri != null) {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                    settings?.let {
+                        viewModel.updateSettings(it.copy(epubBackgroundImageUri = uri.toString()))
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "背景画像の登録に失敗しました", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    )
+
+    // Backup & Restore activity launchers
     val backupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
         onResult = { uri ->
-            uri?.let {
-                viewModel.backupData(context, it) { success ->
+            if (uri != null) {
+                scope.launch {
+                    val success = viewModel.exportBackup(context, uri)
                     if (success) {
-                        Toast.makeText(context, "設定・履歴データをバックアップしました", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "バックアップを保存しました", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "バックアップの作成に失敗しました", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "バックアップに失敗しました", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -127,12 +180,13 @@ fun SettingsScreen(
     val restoreLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
-            uri?.let {
-                viewModel.restoreData(context, it) { success ->
+            if (uri != null) {
+                scope.launch {
+                    val success = viewModel.importBackup(context, uri)
                     if (success) {
-                        Toast.makeText(context, "データをインポートしました。アプリを再起動してください", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "バックアップから復元しました。アプリを再起動してください。", Toast.LENGTH_LONG).show()
                     } else {
-                        Toast.makeText(context, "データの復元に失敗しました", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "復元に失敗しました。ファイルを確認してください。", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -141,38 +195,55 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        when (activeCategory) {
-                            null -> "設定"
-                            SettingsCategory.GENERAL -> "全般設定"
-                            SettingsCategory.EPUB -> "EPUB 読書設定"
-                            SettingsCategory.CBZ -> "CBZ 読書設定"
-                            SettingsCategory.OTHER -> "システム・メンテナンス"
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = if (activeCategory == null) "Settings" else when (activeCategory!!) {
+                                SettingsCategory.GENERAL -> "General Settings"
+                                SettingsCategory.SYNC -> "Library Sync"
+                                SettingsCategory.READER -> "Reader Configuration"
+                                SettingsCategory.EPUB -> "EPUB Layout Settings"
+                                SettingsCategory.CBZ -> "CBZ Comic Settings"
+                                SettingsCategory.WIDGET -> "Widget Settings"
+                                SettingsCategory.SYSTEM -> "System & Stats"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    },
+                    navigationIcon = {
+                        if (activeCategory == null) {
+                            IconButton(onClick = onMenuClick) {
+                                Icon(imageVector = Icons.Default.Menu, contentDescription = "メニュー", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        } else {
+                            IconButton(onClick = { activeCategory = null }) {
+                                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "戻る", tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        navigationIconContentColor = MaterialTheme.colorScheme.primary
                     )
-                },
-                navigationIcon = {
-                    if (activeCategory != null) {
-                        IconButton(onClick = { activeCategory = null }) {
-                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "戻る")
-                        }
-                    } else if (onBackClick != null) {
-                        IconButton(onClick = onBackClick) {
-                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "戻る")
-                        }
-                    } else {
-                        IconButton(onClick = onMenuClick) {
-                            Icon(imageVector = Icons.Default.Menu, contentDescription = "メニュー")
-                        }
-                    }
-                }
-            )
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
+            }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         modifier = modifier
     ) { innerPadding ->
+        if (settings == null) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return@Scaffold
+        }
+
+        val currentSettings = settings!!
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -185,64 +256,140 @@ fun SettingsScreen(
 
             if (activeCategory == null) {
                 // ── メインカテゴリ選択メニュー ──
-                CategoryCard("全般設定", "テーマ、カラー、操作、音量キー、タップ判定領域、画面ロックなどの共通設定") {
+                CategoryCard("全般設定 (General)", "起動画面、お気に入りピン留め、テーマ、ディスプレイ、画面ロックなどの共通設定") {
                     activeCategory = SettingsCategory.GENERAL
                 }
-                CategoryCard("EPUB 読書設定", "フォント、余白、行間、背景（色/画像）、ルビ、カスタムCSSなど小説・テキストの設定") {
+                CategoryCard("ライブラリ同期 (Sync)", "書籍ソースフォルダの登録、同期ステータスの確認、ライブラリスキャン") {
+                    activeCategory = SettingsCategory.SYNC
+                }
+                CategoryCard("読書操作・連携 (Reader Controls)", "タップ領域判定、音量キー操作、クイックメニュータイル、連携辞書アプリ設定") {
+                    activeCategory = SettingsCategory.READER
+                }
+                CategoryCard("EPUB 読書設定 (EPUB layout)", "表示方向、フォントサイズ、行間、余白、ルビ、カスタムCSSなどの小説設定") {
                     activeCategory = SettingsCategory.EPUB
                 }
-                CategoryCard("CBZ 読書設定", "読み進め方向、見開き、画像スケーリング画質、グレースケール、画像色反転などのコミック・画像設定") {
+                CategoryCard("CBZ 読書設定 (CBZ Comic)", "読み進め方向、見開き、余白トリミング、グレースケールなどのコミック設定") {
                     activeCategory = SettingsCategory.CBZ
                 }
-                CategoryCard("システム・メンテナンス", "キャッシュサイズ表示と削除、ファクトリーリセット、データバックアップ＆復元、推奨辞書連携") {
-                    activeCategory = SettingsCategory.OTHER
+                CategoryCard("ウィジェット設定 (Widget Settings)", "ホーム画面ウィジェットの書籍並べ替え順、お気に入りピン留めなどの設定") {
+                    activeCategory = SettingsCategory.WIDGET
+                }
+                CategoryCard("統計・メンテナンス (System & Stats)", "読書統計（期間別表示）、キャッシュクリア、バックアップ＆復元、リセット") {
+                    activeCategory = SettingsCategory.SYSTEM
                 }
             } else {
                 when (activeCategory!!) {
                     SettingsCategory.GENERAL -> {
                         // ── 1. 全般設定 ──
-                        SectionHeader(title = "システム・ディスプレイ設定")
+                        SectionHeader(title = "アプリ起動設定")
+
+                        DropdownSettingRow(
+                            title = "起動時の初期画面",
+                            currentLabel = when (currentSettings.startupScreen) {
+                                "BOOKSHELF_ALL" -> "本棚 (すべて)"
+                                "BOOKSHELF_EPUB" -> "本棚 (EPUB)"
+                                "BOOKSHELF_CBZ" -> "本棚 (CBZ)"
+                                "HISTORY" -> "履歴"
+                                "RESUME_LAST" -> "最後に読んでいた本"
+                                else -> "本棚 (すべて)"
+                            },
+                            options = listOf(
+                                "本棚 (すべて)" to { viewModel.updateSettings(currentSettings.copy(startupScreen = "BOOKSHELF_ALL")) },
+                                "本棚 (EPUB)" to { viewModel.updateSettings(currentSettings.copy(startupScreen = "BOOKSHELF_EPUB")) },
+                                "本棚 (CBZ)" to { viewModel.updateSettings(currentSettings.copy(startupScreen = "BOOKSHELF_CBZ")) },
+                                "履歴" to { viewModel.updateSettings(currentSettings.copy(startupScreen = "HISTORY")) },
+                                "最後に読んでいた本" to { viewModel.updateSettings(currentSettings.copy(startupScreen = "RESUME_LAST")) }
+                            )
+                        )
+
+                        HorizontalDivider()
+
+                        SectionHeader(title = "お気に入りピン留め設定")
+
+                        SettingSwitchRow(
+                            title = "お気に入りを本棚の最上部にピン留めする",
+                            checked = currentSettings.bookshelfPinFavorites,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(bookshelfPinFavorites = it)) }
+                        )
+
+                        HorizontalDivider()
+
+                        SectionHeader(title = "ディスプレイ・テーマ設定")
 
                         DropdownSettingRow(
                             title = "テーマ設定",
-                            currentLabel = when (settings.themeMode) {
+                            currentLabel = when (currentSettings.themeMode) {
                                 ThemeMode.LIGHT -> "ライト"
                                 ThemeMode.DARK -> "ダーク"
                                 ThemeMode.SYSTEM -> "システム追従"
                                 ThemeMode.BLACK -> "ブラック (AMOLED)"
                             },
                             options = listOf(
-                                "ライト" to { viewModel.updateSettings(settings.copy(themeMode = ThemeMode.LIGHT)) },
-                                "ダーク" to { viewModel.updateSettings(settings.copy(themeMode = ThemeMode.DARK)) },
-                                "システム追従" to { viewModel.updateSettings(settings.copy(themeMode = ThemeMode.SYSTEM)) },
-                                "ブラック (AMOLED)" to { viewModel.updateSettings(settings.copy(themeMode = ThemeMode.BLACK)) }
+                                "ライト" to { viewModel.updateSettings(currentSettings.copy(themeMode = ThemeMode.LIGHT)) },
+                                "ダーク" to { viewModel.updateSettings(currentSettings.copy(themeMode = ThemeMode.DARK)) },
+                                "システム追従" to { viewModel.updateSettings(currentSettings.copy(themeMode = ThemeMode.SYSTEM)) },
+                                "ブラック (AMOLED)" to { viewModel.updateSettings(currentSettings.copy(themeMode = ThemeMode.BLACK)) }
                             )
                         )
 
                         SettingSwitchRow(
                             title = "フルスクリーン表示 (ステータスバー等を非表示)",
-                            checked = settings.enableFullscreen,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(enableFullscreen = it)) }
+                            checked = currentSettings.enableFullscreen,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableFullscreen = it)) }
                         )
 
                         SettingSwitchRow(
                             title = "画面常時オン (スリープ防止)",
-                            checked = settings.keepScreenOn,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(keepScreenOn = it)) }
+                            checked = currentSettings.keepScreenOn,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(keepScreenOn = it)) }
                         )
 
                         DropdownSettingRow(
                             title = "画面回転ロック設定",
-                            currentLabel = when (settings.screenRotationLock) {
+                            currentLabel = when (currentSettings.screenRotationLock) {
                                 1 -> "縦画面に固定"
                                 2 -> "横画面に固定"
                                 else -> "自動 (センサー追従)"
                             },
                             options = listOf(
-                                "自動 (センサー追従)" to { viewModel.updateSettings(settings.copy(screenRotationLock = 0)) },
-                                "縦画面に固定" to { viewModel.updateSettings(settings.copy(screenRotationLock = 1)) },
-                                "横画面に固定" to { viewModel.updateSettings(settings.copy(screenRotationLock = 2)) }
+                                "自動 (センサー追従)" to { viewModel.updateSettings(currentSettings.copy(screenRotationLock = 0)) },
+                                "縦画面に固定" to { viewModel.updateSettings(currentSettings.copy(screenRotationLock = 1)) },
+                                "横画面に固定" to { viewModel.updateSettings(currentSettings.copy(screenRotationLock = 2)) }
                             )
+                        )
+
+                        // 端末がサポートするリフレッシュレートを動的に取得
+                        val supportedRefreshRates = remember {
+                            val modes = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                (context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager)
+                                    ?.currentWindowMetrics?.let { null }
+                                    ?: run {
+                                        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? android.hardware.display.DisplayManager)
+                                            ?.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                                        display?.supportedModes?.map { it.refreshRate.toInt() }?.distinct()?.sorted()
+                                    }
+                            } else {
+                                @Suppress("DEPRECATION")
+                                val display = (context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager)
+                                    ?.defaultDisplay
+                                display?.supportedModes?.map { it.refreshRate.toInt() }?.distinct()?.sorted()
+                            }
+                            modes ?: listOf(60, 120)
+                        }
+
+                        DropdownSettingRow(
+                            title = "リフレッシュレート設定",
+                            currentLabel = if (currentSettings.readerRefreshRate <= 0) {
+                                "自動（システム優先）"
+                            } else {
+                                "${currentSettings.readerRefreshRate} Hz"
+                            },
+                            options = buildList {
+                                add("自動（システム優先）" to { viewModel.updateSettings(currentSettings.copy(readerRefreshRate = -1)) })
+                                supportedRefreshRates.forEach { hz ->
+                                    add("$hz Hz" to { viewModel.updateSettings(currentSettings.copy(readerRefreshRate = hz)) })
+                                }
+                            }
                         )
 
                         HorizontalDivider()
@@ -256,7 +403,9 @@ fun SettingsScreen(
                             "エメラルドグリーン" to "#2E7D32"
                         )
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             presets.forEach { (name, hex) ->
@@ -265,10 +414,10 @@ fun SettingsScreen(
                                     modifier = Modifier
                                         .size(36.dp)
                                         .background(color)
-                                        .clickable { viewModel.updateSettings(settings.copy(uiAccentColor = hex)) }
+                                        .clickable { viewModel.updateSettings(currentSettings.copy(uiAccentColor = hex)) }
                                         .border(
-                                            width = if (settings.uiAccentColor == hex) 3.dp else 1.dp,
-                                            color = if (settings.uiAccentColor == hex) MaterialTheme.colorScheme.onSurface else Color.Transparent
+                                            width = if (currentSettings.uiAccentColor == hex) 3.dp else 1.dp,
+                                            color = if (currentSettings.uiAccentColor == hex) MaterialTheme.colorScheme.onSurface else Color.Transparent
                                         )
                                 )
                             }
@@ -276,46 +425,400 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         HexColorPicker(
                             title = "カスタムアクセントカラー (HEXコード)",
-                            initialColorHex = settings.uiAccentColor,
-                            onColorSelected = { viewModel.updateSettings(settings.copy(uiAccentColor = it)) }
+                            initialColorHex = currentSettings.uiAccentColor,
+                            onColorSelected = { viewModel.updateSettings(currentSettings.copy(uiAccentColor = it)) }
+                        )
+                    }
+
+                    SettingsCategory.SYNC -> {
+                        // ── 2. ライブラリ同期 ──
+                        val syncViewModel: FolderSyncViewModel = org.koin.androidx.compose.koinViewModel()
+                        val syncSettings by syncViewModel.appSettings.collectAsState()
+                        val isScanning by syncViewModel.isScanning.collectAsState()
+                        val scanResult by syncViewModel.scanResult.collectAsState()
+                        val scanProgress by syncViewModel.scanProgress.collectAsState()
+
+                        val folderPickerLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.OpenDocumentTree(),
+                            onResult = { uri ->
+                                if (uri != null) {
+                                    context.contentResolver.takePersistableUriPermission(
+                                        uri,
+                                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                    syncViewModel.addSourceFolder(uri)
+                                }
+                            }
                         )
 
-                        HorizontalDivider()
+                        val folderNamesMap = remember(syncSettings.bookSourceFolderUris) {
+                            syncSettings.bookSourceFolderUris.associateWith { uriStr ->
+                                try {
+                                    val doc = DocumentFile.fromTreeUri(context, Uri.parse(uriStr))
+                                    doc?.name ?: "不明なフォルダ"
+                                } catch (e: Exception) {
+                                    "アクセスできないフォルダ"
+                                }
+                            }
+                        }
 
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "ディレクトリ設定",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "同期監視対象: ${syncSettings.bookSourceFolderUris.size} 件",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Button(
+                                onClick = { folderPickerLauncher.launch(null) },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("同期フォルダを追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Technical Table Layout for Directories
+                        Card(
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier
+                                .heightIn(max = 240.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "フォルダパス",
+                                        modifier = Modifier.weight(0.6f),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "状態",
+                                        modifier = Modifier.weight(0.25f),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "操作",
+                                        modifier = Modifier.weight(0.15f),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.End
+                                    )
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
+
+                                if (syncSettings.bookSourceFolderUris.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "同期対象のフォルダが登録されていません。\n右上の「同期フォルダを追加」から登録してください。",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 12.sp,
+                                            textAlign = TextAlign.Center,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        items(syncSettings.bookSourceFolderUris) { uriStr ->
+                                            val folderName = folderNamesMap[uriStr] ?: "不明なフォルダ"
+                                            Column {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(0.6f)) {
+                                                        Text(
+                                                            text = folderName,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 13.sp,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Spacer(modifier = Modifier.height(1.dp))
+                                                        Text(
+                                                            text = uriStr,
+                                                            fontSize = 10.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Row(
+                                                        modifier = Modifier.weight(0.25f),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        if (isScanning) {
+                                                            CircularProgressIndicator(
+                                                                modifier = Modifier.size(10.dp),
+                                                                strokeWidth = 1.5.dp,
+                                                                color = MaterialTheme.colorScheme.primary
+                                                            )
+                                                            Text(
+                                                                text = "スキャン中",
+                                                                fontSize = 11.sp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        } else {
+                                                            Icon(
+                                                                imageVector = Icons.Default.CheckCircle,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF10B981),
+                                                                modifier = Modifier.size(12.dp)
+                                                            )
+                                                            Text(
+                                                                text = "同期済み",
+                                                                fontSize = 11.sp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+                                                    Box(
+                                                        modifier = Modifier.weight(0.15f),
+                                                        contentAlignment = Alignment.CenterEnd
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = { syncViewModel.removeSourceFolder(uriStr) },
+                                                            modifier = Modifier.size(24.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Close,
+                                                                contentDescription = "削除",
+                                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (scanResult != null || scanProgress != null) {
+                            Card(
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (isScanning) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Refresh,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isScanning && scanProgress != null) scanProgress!! else (scanResult ?: ""),
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        Button(
+                            onClick = { syncViewModel.startScan() },
+                            enabled = !isScanning && syncSettings.bookSourceFolderUris.isNotEmpty(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            if (isScanning) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("フォルダスキャン中...", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("ライブラリをスキャンして同期", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        var showReScanConfirm by remember { mutableStateOf(false) }
+                        OutlinedButton(
+                            onClick = { showReScanConfirm = true },
+                            enabled = !isScanning && syncSettings.bookSourceFolderUris.isNotEmpty(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                            shape = MaterialTheme.shapes.small,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("本棚を初期化してフル再スキャン", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        if (showReScanConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showReScanConfirm = false },
+                                shape = MaterialTheme.shapes.medium,
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                title = { Text("初期化とフル再スキャン", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall) },
+                                text = { Text("本棚のすべてのフォルダ、書籍コピー、および読書進捗・履歴が完全に初期化（削除）されます。同期フォルダから書籍をフルスキャンし直します。よろしいですか？", fontSize = 12.sp) },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            showReScanConfirm = false
+                                            syncViewModel.startReScanFromScratch()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = Color.White),
+                                        shape = MaterialTheme.shapes.small
+                                    ) {
+                                        Text("実行", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showReScanConfirm = false }) {
+                                        Text("キャンセル")
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    SettingsCategory.READER -> {
+                        // ── 3. 読書操作設定 ──
                         SectionHeader(title = "操作設定")
 
                         DropdownSettingRow(
                             title = "読書画面のタップ判定",
-                            currentLabel = when (settings.tapZoneMapping) {
+                            currentLabel = when (currentSettings.tapZoneMapping) {
                                 1 -> "左右：[左]進む / [右]戻る"
                                 2 -> "全幅：タップで次ページへ"
                                 else -> "左右：[左]戻る / [右]進む"
                             },
                             options = listOf(
-                                "左右：[左]戻る / [右]進む" to { viewModel.updateSettings(settings.copy(tapZoneMapping = 0)) },
-                                "左右：[左]進む / [右]戻る" to { viewModel.updateSettings(settings.copy(tapZoneMapping = 1)) },
-                                "全幅：タップで次ページへ" to { viewModel.updateSettings(settings.copy(tapZoneMapping = 2)) }
+                                "左右：[左]戻る / [右]進む" to { viewModel.updateSettings(currentSettings.copy(tapZoneMapping = 0)) },
+                                "左右：[左]進む / [右]戻る" to { viewModel.updateSettings(currentSettings.copy(tapZoneMapping = 1)) },
+                                "全幅：タップで次ページへ" to { viewModel.updateSettings(currentSettings.copy(tapZoneMapping = 2)) }
+                            )
+                        )
+
+                        DropdownSettingRow(
+                            title = "タップ時のスクロール・ページ移動量",
+                            currentLabel = when (currentSettings.navTapScrollAmount) {
+                                "PAGE_05" -> "1/2ページ"
+                                "PAGE_03" -> "1/3ページ"
+                                "LINES_3" -> "3行"
+                                "LINES_5" -> "5行"
+                                "LINES_10" -> "10行"
+                                else -> "1ページ (画面全体)"
+                            },
+                            options = listOf(
+                                "1ページ (画面全体)" to { viewModel.updateSettings(currentSettings.copy(navTapScrollAmount = "PAGE_1")) },
+                                "1/2ページ" to { viewModel.updateSettings(currentSettings.copy(navTapScrollAmount = "PAGE_05")) },
+                                "1/3ページ" to { viewModel.updateSettings(currentSettings.copy(navTapScrollAmount = "PAGE_03")) },
+                                "3行" to { viewModel.updateSettings(currentSettings.copy(navTapScrollAmount = "LINES_3")) },
+                                "5行" to { viewModel.updateSettings(currentSettings.copy(navTapScrollAmount = "LINES_5")) },
+                                "10行" to { viewModel.updateSettings(currentSettings.copy(navTapScrollAmount = "LINES_10")) }
                             )
                         )
 
                         SettingSwitchRow(
                             title = "エッジ誤判定保護ガード",
-                            checked = settings.enableEdgeProtect,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(enableEdgeProtect = it)) }
+                            checked = currentSettings.enableEdgeProtect,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableEdgeProtect = it)) }
                         )
 
                         SettingSwitchRow(
                             title = "音量ボタンによるページ移動",
-                            checked = settings.enableVolumeKeyNav,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(enableVolumeKeyNav = it)) }
+                            checked = currentSettings.enableVolumeKeyNav,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableVolumeKeyNav = it)) }
                         )
 
-                        if (settings.enableVolumeKeyNav) {
+                        if (currentSettings.enableVolumeKeyNav) {
+                            DropdownSettingRow(
+                                title = "音量ボタン押下時のページ移動量",
+                                currentLabel = when (currentSettings.navVolumeScrollAmount) {
+                                    "PAGE_05" -> "1/2ページ"
+                                    "PAGE_03" -> "1/3ページ"
+                                    "LINES_3" -> "3行"
+                                    "LINES_5" -> "5行"
+                                    "LINES_10" -> "10行"
+                                    else -> "1ページ (画面全体)"
+                                },
+                                options = listOf(
+                                    "1ページ (画面全体)" to { viewModel.updateSettings(currentSettings.copy(navVolumeScrollAmount = "PAGE_1")) },
+                                    "1/2ページ" to { viewModel.updateSettings(currentSettings.copy(navVolumeScrollAmount = "PAGE_05")) },
+                                    "1/3ページ" to { viewModel.updateSettings(currentSettings.copy(navVolumeScrollAmount = "PAGE_03")) },
+                                    "3行" to { viewModel.updateSettings(currentSettings.copy(navVolumeScrollAmount = "LINES_3")) },
+                                    "5行" to { viewModel.updateSettings(currentSettings.copy(navVolumeScrollAmount = "LINES_5")) },
+                                    "10行" to { viewModel.updateSettings(currentSettings.copy(navVolumeScrollAmount = "LINES_10")) }
+                                )
+                            )
+
                             Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                                Text(text = "音量ボタンチャタリング防止: ${settings.volumeKeyDebounceMs} ms", fontSize = 13.sp)
+                                Text(text = "音量ボタンチャタリング防止: ${currentSettings.volumeKeyDebounceMs} ms", fontSize = 13.sp)
                                 Slider(
-                                    value = settings.volumeKeyDebounceMs.toFloat(),
-                                    onValueChange = { viewModel.updateSettings(settings.copy(volumeKeyDebounceMs = it.toInt())) },
+                                    value = currentSettings.volumeKeyDebounceMs.toFloat(),
+                                    onValueChange = { viewModel.updateSettings(currentSettings.copy(volumeKeyDebounceMs = it.toInt())) },
                                     valueRange = 0f..1000f,
                                     steps = 20
                                 )
@@ -324,94 +827,153 @@ fun SettingsScreen(
 
                         HorizontalDivider()
 
-                        SectionHeader(title = "クイックメニュータイル設定")
-                        Text(
-                            text = "読書画面の中央タップメニューに表示するタイルと列数をカスタマイズします。",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        QuickMenuTileEditor(
-                            currentTilesJson = settings.quickMenuTiles,
-                            currentColumns = settings.quickMenuColumns,
-                            onTilesChanged = { viewModel.updateSettings(settings.copy(quickMenuTiles = it)) },
-                            onColumnsChanged = { viewModel.updateSettings(settings.copy(quickMenuColumns = it)) }
+                        SectionHeader(title = "クイックメニュー設定")
+
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text(text = "クイックメニューの行数: ${currentSettings.quickMenuRows} 行", fontSize = 13.sp)
+                            Slider(
+                                value = currentSettings.quickMenuRows.toFloat(),
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(quickMenuRows = it.toInt())) },
+                                valueRange = 1f..3f,
+                                steps = 2
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        SettingSwitchRow(
+                            title = "クイックメニューに音楽コントロールを表示",
+                            checked = currentSettings.enableMusicControls,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableMusicControls = it)) }
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        SettingSwitchRow(
-                            title = "クイックメニューに音楽コントロールを表示",
-                            checked = settings.enableMusicControls,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(enableMusicControls = it)) }
+                        Text(
+                            text = "クイックメニューのタイル構成",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(bottom = 4.dp)
                         )
+                        Text(
+                            text = "読書中に下から引き出すクイックメニューに表示するタイルを並び替え・追加・削除できます。",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        QuickMenuTileEditor(
+                            currentTilesJson = currentSettings.quickMenuTiles,
+                            currentColumns = currentSettings.quickMenuRows,
+                            onTilesChanged = { newJson ->
+                                viewModel.updateSettings(currentSettings.copy(quickMenuTiles = newJson))
+                            },
+                            onColumnsChanged = { newRows ->
+                                viewModel.updateSettings(currentSettings.copy(quickMenuRows = newRows))
+                            }
+                        )
+
+                        HorizontalDivider()
+
+                        SectionHeader(title = "推奨外部辞書・翻訳連携")
+                        Text(
+                            text = "EPUB読書中にテキストを長押しして選択した際、直接起動できるアプリを設定します。",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val dicts = listOf(
+                            "EBPocket (EPWING辞書ビューア)" to "info.ebstudio.ebpocket",
+                            "Aedict (日本語学習・和英辞書)" to "sk.baka.aedict3",
+                            "Google 翻訳" to "com.google.android.apps.translate"
+                        )
+                        dicts.forEach { (name, pkg) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = name, modifier = Modifier.weight(1f), fontSize = 13.sp)
+                                TextButton(onClick = {
+                                    try {
+                                        val intent = context.packageManager.getLaunchIntentForPackage(pkg)
+                                        if (intent != null) {
+                                            context.startActivity(intent)
+                                        } else {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")))
+                                        }
+                                    } catch (e: Exception) {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")))
+                                    }
+                                }) {
+                                    Text("起動 / 取得")
+                                }
+                            }
+                        }
                     }
 
                     SettingsCategory.EPUB -> {
-                        // ── 2. EPUB読書設定 ──
+                        // ── 4. EPUB読書設定 ──
                         SectionHeader(title = "EPUB レイアウト・スクロール")
 
                         DropdownSettingRow(
                             title = "表示方向・進行",
-                            currentLabel = when (settings.epubDirection) {
+                            currentLabel = when (currentSettings.epubDirection) {
                                 EpubDirection.VERTICAL -> "縦書き (横スクロール)"
                                 EpubDirection.HORIZONTAL -> "横書き (縦スクロール)"
                             },
                             options = listOf(
-                                "縦書き (横スクロール)" to { viewModel.updateSettings(settings.copy(epubDirection = EpubDirection.VERTICAL)) },
-                                "横書き (縦スクロール)" to { viewModel.updateSettings(settings.copy(epubDirection = EpubDirection.HORIZONTAL)) }
+                                "縦書き (横スクロール)" to { viewModel.updateSettings(currentSettings.copy(epubDirection = EpubDirection.VERTICAL)) },
+                                "横書き (縦スクロール)" to { viewModel.updateSettings(currentSettings.copy(epubDirection = EpubDirection.HORIZONTAL)) }
                             )
                         )
 
                         SettingSwitchRow(
                             title = "CSS強制上書き (フォントや進行方向を優先適用)",
-                            checked = settings.forceCssOverwrite,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(forceCssOverwrite = it)) }
+                            checked = currentSettings.forceCssOverwrite,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(forceCssOverwrite = it)) }
                         )
 
                         Column {
-                            Text(text = "フォントサイズ: ${settings.epubFontSize} sp", fontSize = 13.sp)
+                            Text(text = "フォントサイズ: ${currentSettings.epubFontSize} sp", fontSize = 13.sp)
                             Slider(
-                                value = settings.epubFontSize.toFloat(),
-                                onValueChange = { viewModel.updateSettings(settings.copy(epubFontSize = it.toInt())) },
+                                value = currentSettings.epubFontSize.toFloat(),
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(epubFontSize = it.toInt())) },
                                 valueRange = 10f..40f, steps = 30
                             )
                         }
 
                         Column {
-                            Text(text = "行間: ${String.format("%.1f", settings.epubLineSpacing)}", fontSize = 13.sp)
+                            Text(text = "行間: ${String.format("%.1f", currentSettings.epubLineSpacing)}", fontSize = 13.sp)
                             Slider(
-                                value = settings.epubLineSpacing,
-                                onValueChange = { viewModel.updateSettings(settings.copy(epubLineSpacing = it)) },
+                                value = currentSettings.epubLineSpacing,
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(epubLineSpacing = it)) },
                                 valueRange = 1.0f..3.0f, steps = 20
                             )
                         }
 
                         Column {
-                            Text(text = "画面内余白: ${settings.epubMargin} dp", fontSize = 13.sp)
+                            Text(text = "画面内余白: ${currentSettings.epubMargin} dp", fontSize = 13.sp)
                             Slider(
-                                value = settings.epubMargin.toFloat(),
-                                onValueChange = { viewModel.updateSettings(settings.copy(epubMargin = it.toInt())) },
+                                value = currentSettings.epubMargin.toFloat(),
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(epubMargin = it.toInt())) },
                                 valueRange = 0f..48f, steps = 12
                             )
                         }
 
                         Column {
-                            Text(text = "自動スクロール速度: ${settings.autoScrollSpeed}", fontSize = 13.sp)
+                            Text(text = "自動スクロール速度: ${currentSettings.autoScrollSpeed}", fontSize = 13.sp)
                             Slider(
-                                value = settings.autoScrollSpeed.toFloat(),
-                                onValueChange = { viewModel.updateSettings(settings.copy(autoScrollSpeed = it.toInt())) },
+                                value = currentSettings.autoScrollSpeed.toFloat(),
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(autoScrollSpeed = it.toInt())) },
                                 valueRange = 1f..20f, steps = 19
                             )
                         }
 
                         DropdownSettingRow(
                             title = "開始までのカウントダウン",
-                            currentLabel = if (settings.countdownSeconds == 0) "なし" else "${settings.countdownSeconds}秒",
+                            currentLabel = if (currentSettings.countdownSeconds == 0) "なし" else "${currentSettings.countdownSeconds}秒",
                             options = listOf(
-                                "なし" to { viewModel.updateSettings(settings.copy(countdownSeconds = 0)) },
-                                "3秒" to { viewModel.updateSettings(settings.copy(countdownSeconds = 3)) },
-                                "5秒" to { viewModel.updateSettings(settings.copy(countdownSeconds = 5)) }
+                                "なし" to { viewModel.updateSettings(currentSettings.copy(countdownSeconds = 0)) },
+                                "3秒" to { viewModel.updateSettings(currentSettings.copy(countdownSeconds = 3)) },
+                                "5秒" to { viewModel.updateSettings(currentSettings.copy(countdownSeconds = 5)) }
                             )
                         )
 
@@ -420,15 +982,15 @@ fun SettingsScreen(
                         SectionHeader(title = "ルビ設定")
                         SettingSwitchRow(
                             title = "ルビ（振り仮名）を表示する",
-                            checked = settings.showRuby,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(showRuby = it)) }
+                            checked = currentSettings.showRuby,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(showRuby = it)) }
                         )
-                        if (settings.showRuby) {
+                        if (currentSettings.showRuby) {
                             Column {
-                                Text(text = "ルビサイズ（本文比率）: ${(settings.epubRubySize * 100).toInt()} %", fontSize = 13.sp)
+                                Text(text = "ルビサイズ（本文比率）: ${(currentSettings.epubRubySize * 100).toInt()} %", fontSize = 13.sp)
                                 Slider(
-                                    value = settings.epubRubySize * 100f,
-                                    onValueChange = { viewModel.updateSettings(settings.copy(epubRubySize = it / 100f)) },
+                                    value = currentSettings.epubRubySize * 100f,
+                                    onValueChange = { viewModel.updateSettings(currentSettings.copy(epubRubySize = it / 100f)) },
                                     valueRange = 30f..100f, steps = 14
                                 )
                             }
@@ -444,308 +1006,194 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(text = "フォントフォルダ")
-                                if (settings.epubFontFolderUri != null) {
+                                if (currentSettings.epubFontFolderUri != null) {
                                     Text(
                                         text = "フォルダ設定済み (${fontFiles.size}個のフォント検出)",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.secondary
                                     )
                                 } else {
-                                    Text(
-                                        text = ".ttf / .otf を含むフォルダを選択してください",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text(text = "未設定", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
                                 }
                             }
-                            TextButton(onClick = { fontFolderLauncher.launch(null) }) {
-                                Text(if (settings.epubFontFolderUri == null) "フォルダ選択" else "変更")
-                            }
-                            if (settings.epubFontFolderUri != null) {
-                                TextButton(onClick = {
-                                    viewModel.updateSettings(
-                                        settings.copy(epubFontFolderUri = null, epubCustomFontUri = null)
-                                    )
-                                }) {
-                                    Text("クリア", color = MaterialTheme.colorScheme.error)
-                                }
+                            Button(onClick = { fontFolderLauncher.launch(null) }, shape = RectangleShape) {
+                                Text("フォルダ選択")
                             }
                         }
 
-                        if (fontFiles.isNotEmpty()) {
-                            val currentFontName = settings.epubCustomFontUri?.let { uri ->
-                                fontFiles.firstOrNull { it.second == uri }?.first ?: "カスタム"
-                            } ?: "NotoSansJP (デフォルト)"
-
-                            DropdownSettingRow(
-                                title = "表示フォント",
-                                currentLabel = currentFontName,
-                                options = buildList {
-                                    add("NotoSansJP (デフォルト)" to { viewModel.updateSettings(settings.copy(epubCustomFontUri = null)) })
-                                    fontFiles.forEach { (name, uri) ->
-                                        add(name to { viewModel.updateSettings(settings.copy(epubCustomFontUri = uri)) })
-                                    }
-                                }
-                            )
-
-                            // 選択されているフォントファミリーを使ってプレビューを表示
-                            val customFontFamily = remember(settings.epubCustomFontUri) {
-                                settings.epubCustomFontUri?.let { uriString ->
-                                    try {
-                                        val uri = Uri.parse(uriString)
-                                        val tempFile = File(context.cacheDir, "temp_preview_font.ttf")
-                                        context.contentResolver.openInputStream(uri)?.use { input ->
-                                            tempFile.outputStream().use { output ->
-                                                input.copyTo(output)
-                                            }
-                                        }
-                                        if (tempFile.exists()) {
-                                            androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(tempFile))
-                                        } else {
-                                            androidx.compose.ui.text.font.FontFamily.Default
-                                        }
-                                    } catch (e: Exception) {
-                                        androidx.compose.ui.text.font.FontFamily.Default
-                                    }
-                                } ?: androidx.compose.ui.text.font.FontFamily.Default
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant, RectangleShape)
-                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RectangleShape)
-                                    .padding(12.dp)
-                            ) {
-                                Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = "カスタムフォント個別指定")
+                                if (currentSettings.epubCustomFontUri != null) {
                                     Text(
-                                        text = "フォントプレビュー",
+                                        text = "フォント指定済み",
                                         fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = FontWeight.Bold
+                                        color = MaterialTheme.colorScheme.secondary
                                     )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "吾輩は猫である。名前はまだ無い。\nABCabc123",
-                                        fontSize = 16.sp,
-                                        fontFamily = customFontFamily,
-                                        lineHeight = 24.sp
-                                    )
+                                } else {
+                                    Text(text = "未設定", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
                                 }
+                            }
+                            Button(onClick = { fontFileLauncher.launch(arrayOf("font/ttf", "font/otf", "application/x-font-ttf", "application/x-font-otf")) }, shape = RectangleShape) {
+                                Text("ファイル選択")
                             }
                         }
 
                         HorizontalDivider()
 
-                        SectionHeader(title = "背景・読書配色")
+                        SectionHeader(title = "背景カラー・画像")
 
                         DropdownSettingRow(
-                            title = "背景タイプ",
-                            currentLabel = when (settings.epubBackgroundType) {
-                                BackgroundType.COLOR -> "単色塗りつぶし"
-                                BackgroundType.IMAGE -> "背景画像"
+                            title = "背景表示タイプ",
+                            currentLabel = when (currentSettings.epubBackgroundType) {
+                                BackgroundType.COLOR -> "背景カラー指定"
+                                BackgroundType.IMAGE -> "背景テクスチャ・画像"
                             },
                             options = listOf(
-                                "単色塗りつぶし" to { viewModel.updateSettings(settings.copy(epubBackgroundType = BackgroundType.COLOR)) },
-                                "背景画像" to { viewModel.updateSettings(settings.copy(epubBackgroundType = BackgroundType.IMAGE)) }
+                                "背景カラー指定" to { viewModel.updateSettings(currentSettings.copy(epubBackgroundType = BackgroundType.COLOR)) },
+                                "背景テクスチャ・画像" to { viewModel.updateSettings(currentSettings.copy(epubBackgroundType = BackgroundType.IMAGE)) }
                             )
                         )
 
-                        if (settings.epubBackgroundType == BackgroundType.COLOR) {
-                            // 単色カラー
-                            DropdownSettingRow(
-                                title = "背景色プリセット",
-                                currentLabel = when (settings.epubBackgroundColor) {
-                                    "#FFFFFF" -> "ホワイト"
-                                    "#F5F2EB" -> "セピア"
-                                    "#F3E5F5" -> "淡いパープル"
-                                    "#1E1E1E" -> "ダークチャコール"
-                                    "#000000" -> "ブラック"
-                                    else -> "カスタム"
-                                },
-                                options = listOf(
-                                    "ホワイト" to { viewModel.updateSettings(settings.copy(epubBackgroundColor = "#FFFFFF")) },
-                                    "セピア" to { viewModel.updateSettings(settings.copy(epubBackgroundColor = "#F5F2EB")) },
-                                    "淡いパープル" to { viewModel.updateSettings(settings.copy(epubBackgroundColor = "#F3E5F5")) },
-                                    "ダークチャコール" to { viewModel.updateSettings(settings.copy(epubBackgroundColor = "#1E1E1E")) },
-                                    "ブラック" to { viewModel.updateSettings(settings.copy(epubBackgroundColor = "#000000")) }
-                                )
-                            )
-
+                        if (currentSettings.epubBackgroundType == BackgroundType.COLOR) {
                             HexColorPicker(
-                                title = "カスタム背景色",
-                                initialColorHex = settings.epubBackgroundColor,
-                                onColorSelected = { viewModel.updateSettings(settings.copy(epubBackgroundColor = it)) }
+                                title = "読書画面背景カラー (HEX)",
+                                initialColorHex = currentSettings.epubBackgroundColor,
+                                onColorSelected = { viewModel.updateSettings(currentSettings.copy(epubBackgroundColor = it)) }
                             )
-
-                            HorizontalDivider()
-
-                            DropdownSettingRow(
-                                title = "文字色プリセット",
-                                currentLabel = when (settings.epubTextColor) {
-                                    "#000000" -> "ブラック"
-                                    "#5D4037" -> "セピアブラウン"
-                                    "#CCCCCC" -> "ライトグレー"
-                                    "#FFFFFF" -> "ホワイト"
-                                    else -> "カスタム"
-                                },
-                                options = listOf(
-                                    "ブラック" to { viewModel.updateSettings(settings.copy(epubTextColor = "#000000")) },
-                                    "セピアブラウン" to { viewModel.updateSettings(settings.copy(epubTextColor = "#5D4037")) },
-                                    "ライトグレー" to { viewModel.updateSettings(settings.copy(epubTextColor = "#CCCCCC")) },
-                                    "ホワイト" to { viewModel.updateSettings(settings.copy(epubTextColor = "#FFFFFF")) }
-                                )
-                            )
-
                             HexColorPicker(
-                                title = "カスタム文字色",
-                                initialColorHex = settings.epubTextColor,
-                                onColorSelected = { viewModel.updateSettings(settings.copy(epubTextColor = it)) }
+                                title = "読書画面テキストカラー (HEX)",
+                                initialColorHex = currentSettings.epubTextColor,
+                                onColorSelected = { viewModel.updateSettings(currentSettings.copy(epubTextColor = it)) }
                             )
                         } else {
-                            // 背景画像
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = "読書画面の背景画像")
-                                    if (settings.epubBackgroundImageUri != null) {
+                                    Text(text = "背景用テクスチャ画像")
+                                    if (currentSettings.epubBackgroundImageUri != null) {
                                         Text(
                                             text = "画像設定済み",
                                             fontSize = 11.sp,
                                             color = MaterialTheme.colorScheme.secondary
                                         )
                                     } else {
-                                        Text(
-                                            text = "背景にする画像ファイルを選択",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        Text(text = "未設定", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
                                     }
                                 }
-                                TextButton(onClick = { bgPickerLauncher.launch(arrayOf("image/*")) }) {
-                                    Text(if (settings.epubBackgroundImageUri == null) "画像選択" else "変更")
-                                }
-                                if (settings.epubBackgroundImageUri != null) {
-                                    TextButton(onClick = {
-                                        viewModel.updateSettings(settings.copy(epubBackgroundImageUri = null))
-                                    }) {
-                                        Text("クリア", color = MaterialTheme.colorScheme.error)
-                                    }
+                                Button(onClick = { backgroundImageLauncher.launch(arrayOf("image/*")) }, shape = RectangleShape) {
+                                    Text("画像選択")
                                 }
                             }
                         }
 
                         HorizontalDivider()
 
-                        SectionHeader(title = "カスタム CSS")
+                        SectionHeader(title = "詳細カスタマイズCSS")
                         OutlinedTextField(
-                            value = settings.epubCustomCss,
-                            onValueChange = { viewModel.updateSettings(settings.copy(epubCustomCss = it)) },
-                            label = { Text("カスタムCSSルールを追加") },
-                            modifier = Modifier.fillMaxWidth().height(120.dp),
-                            textStyle = TextStyle(fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                        )
-                        HorizontalDivider()
-
-                        SectionHeader(title = "RSVP 速読設定")
-
-                        SliderSettingRow(
-                            title = "RSVP表示速度 (文字/分)",
-                            value = settings.rsvpSpeed.toFloat(),
-                            valueRange = 50f..1000f,
-                            steps = 18,
-                            valueLabel = "${settings.rsvpSpeed} 文字/分",
-                            onValueChange = { viewModel.updateSettings(settings.copy(rsvpSpeed = it.toInt())) }
-                        )
-
-                        SliderSettingRow(
-                            title = "RSVP文字サイズ",
-                            value = settings.rsvpFontSize.toFloat(),
-                            valueRange = 16f..80f,
-                            steps = 15,
-                            valueLabel = "${settings.rsvpFontSize} sp",
-                            onValueChange = { viewModel.updateSettings(settings.copy(rsvpFontSize = it.toInt())) }
-                        )
-
-                        DropdownSettingRow(
-                            title = "RSVP時の画面向き設定",
-                            currentLabel = when (settings.rsvpScreenOrientation) {
-                                1 -> "縦画面に固定"
-                                2 -> "横画面に固定"
-                                else -> "通常の回転設定に従う"
-                            },
-                            options = listOf(
-                                "通常の回転設定に従う" to { viewModel.updateSettings(settings.copy(rsvpScreenOrientation = 0)) },
-                                "縦画面に固定" to { viewModel.updateSettings(settings.copy(rsvpScreenOrientation = 1)) },
-                                "横画面に固定" to { viewModel.updateSettings(settings.copy(rsvpScreenOrientation = 2)) }
-                            )
+                            value = currentSettings.epubCustomCss,
+                            onValueChange = { viewModel.updateSettings(currentSettings.copy(epubCustomCss = it)) },
+                            label = { Text("カスタムCSS (ルビや行間の微調整用)", fontSize = 11.sp) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                         )
                     }
 
                     SettingsCategory.CBZ -> {
-                        // ── 3. CBZ読書設定 ──
-                        SectionHeader(title = "CBZ コミック表示・操作")
+                        // ── 5. CBZコミック設定 ──
+                        SectionHeader(title = "CBZ 表示レイアウト")
 
                         DropdownSettingRow(
-                            title = "読み進め方向",
-                            currentLabel = when (settings.cbzDirection) {
-                                CbzDirection.RTL -> "右から左へ進行 (日本コミック標準)"
-                                CbzDirection.LTR -> "左から右へ進行"
+                            title = "コミック読み進め方向",
+                            currentLabel = when (currentSettings.cbzDirection) {
+                                CbzDirection.LTR -> "左から右 (LTR)"
+                                CbzDirection.RTL -> "右から左 (RTL - 通常の和書マンガ)"
                             },
                             options = listOf(
-                                "右から左へ進行 (日本コミック標準)" to { viewModel.updateSettings(settings.copy(cbzDirection = CbzDirection.RTL)) },
-                                "左から右へ進行" to { viewModel.updateSettings(settings.copy(cbzDirection = CbzDirection.LTR)) }
+                                "左から右 (LTR)" to { viewModel.updateSettings(currentSettings.copy(cbzDirection = CbzDirection.LTR)) },
+                                "右から左 (RTL - 通常の和書マンガ)" to { viewModel.updateSettings(currentSettings.copy(cbzDirection = CbzDirection.RTL)) }
                             )
                         )
 
                         DropdownSettingRow(
-                            title = "画像スケーリング画質",
-                            currentLabel = when (settings.cbzScaleAlgorithm) {
-                                1 -> "速度優先 (高速描画)"
-                                else -> "画質優先 (高品質スケーリング)"
+                            title = "画像スケーリング描画品質",
+                            currentLabel = when (currentSettings.cbzScaleAlgorithm) {
+                                1 -> "バイリニア (滑らか)"
+                                2 -> "バイキュービック (高画質・やや重)"
+                                else -> "ニアレストネイバー (高速・ドット絵向け)"
                             },
                             options = listOf(
-                                "画質優先 (高品質スケーリング)" to { viewModel.updateSettings(settings.copy(cbzScaleAlgorithm = 0)) },
-                                "速度優先 (高速描画)" to { viewModel.updateSettings(settings.copy(cbzScaleAlgorithm = 1)) }
+                                "ニアレストネイバー (高速)" to { viewModel.updateSettings(currentSettings.copy(cbzScaleAlgorithm = 0)) },
+                                "バイリニア (滑らか)" to { viewModel.updateSettings(currentSettings.copy(cbzScaleAlgorithm = 1)) },
+                                "バイキュービック (高画質)" to { viewModel.updateSettings(currentSettings.copy(cbzScaleAlgorithm = 2)) }
                             )
                         )
 
                         SettingSwitchRow(
-                            title = "横画面時の見開き（2ページ）表示",
-                            checked = settings.cbzTwoPageSpread,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(cbzTwoPageSpread = it)) }
+                            title = "横画面での自動見開き2ページ表示",
+                            checked = currentSettings.cbzTwoPageSpread,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzTwoPageSpread = it)) }
                         )
 
                         SettingSwitchRow(
                             title = "スキャン画像の余白自動トリミング",
-                            checked = settings.cbzAutoCrop,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(cbzAutoCrop = it)) }
+                            checked = currentSettings.cbzAutoCrop,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzAutoCrop = it)) }
                         )
 
                         SettingSwitchRow(
                             title = "ダークテーマでの画像階調反転",
-                            checked = settings.cbzInvertColor,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(cbzInvertColor = it)) }
+                            checked = currentSettings.cbzInvertColor,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzInvertColor = it)) }
                         )
 
                         SettingSwitchRow(
                             title = "モノクロ (グレースケール) フィルタ",
-                            checked = settings.cbzGrayscale,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(cbzGrayscale = it)) }
+                            checked = currentSettings.cbzGrayscale,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzGrayscale = it)) }
                         )
 
                         SettingSwitchRow(
                             title = "破損ファイルや非画像ファイルをスキップ",
-                            checked = settings.cbzSkipCorrupted,
-                            onCheckedChange = { viewModel.updateSettings(settings.copy(cbzSkipCorrupted = it)) }
+                            checked = currentSettings.cbzSkipCorrupted,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzSkipCorrupted = it)) }
                         )
                     }
 
-                    SettingsCategory.OTHER -> {
-                        // ── 4. その他・システム ──
+                    SettingsCategory.WIDGET -> {
+                        // ── 6. ウィジェット設定 ──
+                        SectionHeader(title = "ウィジェット並べ替え設定")
+
+                        DropdownSettingRow(
+                            title = "ウィジェットの表示順",
+                            currentLabel = when (currentSettings.widgetSortType) {
+                                1 -> "タイトル順"
+                                2 -> "進捗率順"
+                                else -> "読書履歴順 (最後に読んだ順)"
+                            },
+                            options = listOf(
+                                "読書履歴順 (最後に読んだ順)" to { viewModel.updateSettings(currentSettings.copy(widgetSortType = 0)) },
+                                "タイトル順" to { viewModel.updateSettings(currentSettings.copy(widgetSortType = 1)) },
+                                "進捗率順" to { viewModel.updateSettings(currentSettings.copy(widgetSortType = 2)) }
+                            )
+                        )
+
+                        SettingSwitchRow(
+                            title = "お気に入りをウィジェットの最上部にピン留めする",
+                            checked = currentSettings.widgetPinFavorites,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(widgetPinFavorites = it)) }
+                        )
+                    }
+
+                    SettingsCategory.SYSTEM -> {
+                        // ── 6. 統計・メンテナンス ──
                         fun formatDuration(seconds: Long): String {
                             val hrs = seconds / 3600L
                             val mins = (seconds % 3600L) / 60L
@@ -756,30 +1204,82 @@ fun SettingsScreen(
                             }
                         }
 
+                        fun getReadingTimeForPeriod(period: String, settings: AppSettings): Long {
+                            val historyMap = try {
+                                val json = org.json.JSONObject(settings.statsReadingTimeHistoryJson)
+                                val map = mutableMapOf<String, Long>()
+                                val keys = json.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    map[key] = json.getLong(key)
+                                }
+                                map
+                            } catch (e: Exception) {
+                                emptyMap()
+                            }
+
+                            val today = java.time.LocalDate.now()
+                            return when (period) {
+                                "TODAY" -> settings.statsReadingTimeToday
+                                "YESTERDAY" -> settings.statsReadingTimeYesterday
+                                "LAST_7" -> {
+                                    (0..6).map { today.minusDays(it.toLong()).toString() }
+                                        .sumOf { historyMap[it] ?: 0L }
+                                }
+                                "LAST_30" -> {
+                                    (0..29).map { today.minusDays(it.toLong()).toString() }
+                                        .sumOf { historyMap[it] ?: 0L }
+                                }
+                                "THIS_MONTH" -> {
+                                    val currentYearMonth = today.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"))
+                                    historyMap.filterKeys { it.startsWith(currentYearMonth) }.values.sum()
+                                }
+                                "LAST_MONTH" -> {
+                                    val lastMonthDate = today.minusMonths(1)
+                                    val lastYearMonth = lastMonthDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"))
+                                    historyMap.filterKeys { it.startsWith(lastYearMonth) }.values.sum()
+                                }
+                                else -> settings.statsReadingTimeCumulative
+                            }
+                        }
+
                         SectionHeader(title = "読書統計ダッシュボード")
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+
+                        var selectedStatsPeriod by remember { mutableStateOf("TODAY") }
+                        val statsTime = getReadingTimeForPeriod(selectedStatsPeriod, currentSettings)
+
+                        DropdownSettingRow(
+                            title = "統計表示期間",
+                            currentLabel = when (selectedStatsPeriod) {
+                                "TODAY" -> "本日の読書時間"
+                                "YESTERDAY" -> "昨日の読書時間"
+                                "LAST_7" -> "過去7日間の読書時間"
+                                "LAST_30" -> "過去30日間の読書時間"
+                                "THIS_MONTH" -> "今月の読書時間"
+                                "LAST_MONTH" -> "先月の読書時間"
+                                else -> "累計の読書時間"
+                            },
+                            options = listOf(
+                                "本日の読書時間" to { selectedStatsPeriod = "TODAY" },
+                                "昨日の読書時間" to { selectedStatsPeriod = "YESTERDAY" },
+                                "過去7日間の読書時間" to { selectedStatsPeriod = "LAST_7" },
+                                "過去30日間の読書時間" to { selectedStatsPeriod = "LAST_30" },
+                                "今月の読書時間" to { selectedStatsPeriod = "THIS_MONTH" },
+                                "先月の読書時間" to { selectedStatsPeriod = "LAST_MONTH" },
+                                "累計の読書時間" to { selectedStatsPeriod = "CUMULATIVE" }
+                            )
+                        )
+
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(MaterialTheme.colorScheme.surfaceVariant, RectangleShape)
-                                .padding(12.dp)
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("本日の読書時間:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    Text(formatDuration(settings.statsReadingTimeToday), fontSize = 12.sp)
-                            }
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("昨日の読書時間:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    Text(formatDuration(settings.statsReadingTimeYesterday), fontSize = 12.sp)
-                            }
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("累計の読書時間:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    Text(formatDuration(settings.statsReadingTimeCumulative), fontSize = 12.sp)
-                            }
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("累計読了文字数:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    Text("${settings.statsReadCharacters} 文字", fontSize = 12.sp)
-                            }
+                            Text("読書時間:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text(formatDuration(statsTime), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -859,42 +1359,6 @@ fun SettingsScreen(
                                 },
                                 shape = RectangleShape
                             )
-                        }
-
-                        HorizontalDivider()
-
-                        SectionHeader(title = "推奨外部辞書アプリ起動")
-                        Text(
-                            text = "EPUB読書中にテキストを長押しして選択し、以下のアプリを直接起動することができます。",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        val dicts = listOf(
-                            "EBWin4 (EPWING辞書ビューア)" to "ebstudio.ebwin4",
-                            "Aedict (日本語学習・和英辞書)" to "sk.styk.android.aedict",
-                            "Google 翻訳" to "com.google.android.apps.translate"
-                        )
-                        dicts.forEach { (name, pkg) ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(text = name, modifier = Modifier.weight(1f), fontSize = 13.sp)
-                                TextButton(onClick = {
-                                    try {
-                                        val intent = context.packageManager.getLaunchIntentForPackage(pkg)
-                                        if (intent != null) {
-                                            context.startActivity(intent)
-                                        } else {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")))
-                                        }
-                                    } catch (e: Exception) {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")))
-                                    }
-                                }) {
-                                    Text("起動 / 取得")
-                                }
-                            }
                         }
 
                         HorizontalDivider()
@@ -1106,7 +1570,7 @@ fun HexColorPicker(
                 },
                 valueRange = 0f..255f,
                 modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = redColor, activeTrackColor = redColor.copy(alpha = 0.5f))
+                colors = SliderDefaults.colors(thumbColor = redColor, activeTrackColor = redColor)
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1119,7 +1583,7 @@ fun HexColorPicker(
                 },
                 valueRange = 0f..255f,
                 modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = greenColor, activeTrackColor = greenColor.copy(alpha = 0.5f))
+                colors = SliderDefaults.colors(thumbColor = greenColor, activeTrackColor = greenColor)
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1132,44 +1596,16 @@ fun HexColorPicker(
                 },
                 valueRange = 0f..255f,
                 modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = blueColor, activeTrackColor = blueColor.copy(alpha = 0.5f))
+                colors = SliderDefaults.colors(thumbColor = blueColor, activeTrackColor = blueColor)
             )
         }
     }
 }
 
-@Composable
-fun SliderSettingRow(
-    title: String,
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    steps: Int = 0,
-    valueLabel: String,
-    onValueChange: (Float) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(text = title, modifier = Modifier.weight(1f))
-            Text(
-                text = valueLabel,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            steps = steps,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
+// ─────────────────────────────────────
+// クイックメニュータイル編集コンポーネント
+// ─────────────────────────────────────
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun QuickMenuTileEditor(
     currentTilesJson: String,
@@ -1177,122 +1613,105 @@ fun QuickMenuTileEditor(
     onTilesChanged: (String) -> Unit,
     onColumnsChanged: (Int) -> Unit
 ) {
-    val allTiles = cc.namekuji.tumugi.ui.reader.QuickMenuTile.allTiles
-    val activeTileNames = remember(currentTilesJson) {
+    val selectedTiles = remember(currentTilesJson) {
         try {
-            val json = org.json.JSONArray(currentTilesJson)
-            (0 until json.length()).map { json.getString(it) }.toMutableList()
-        } catch (_: Exception) {
-            mutableListOf("SETTINGS", "TOC", "AUTO_SCROLL", "RSVP")
+            val arr = org.json.JSONArray(currentTilesJson)
+            val list = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                list.add(arr.getString(i))
+            }
+            list.toMutableStateList()
+        } catch (e: Exception) {
+            mutableStateListOf("SETTINGS", "TOC", "AUTO_SCROLL", "RSVP", "NIGHT_MODE", "BOOKMARK")
         }
     }
-    val selectedTiles = remember(currentTilesJson) { activeTileNames.toMutableStateList() }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // 列数設定
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-        ) {
-            Text(text = "列数", modifier = Modifier.weight(1f))
-            (1..6).forEach { cols ->
-                val isSelected = currentColumns == cols
-                TextButton(
-                    onClick = { onColumnsChanged(cols) },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Text(
-                        text = "$cols",
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
+    data class TileDef(val name: String, val label: String, val iconDefault: androidx.compose.ui.graphics.vector.ImageVector)
+    val allTiles = listOf(
+        TileDef("SETTINGS", "設定", Icons.Default.Settings),
+        TileDef("TOC", "目次", Icons.Default.Menu),
+        TileDef("AUTO_SCROLL", "自動スクロール", Icons.Default.Refresh),
+        TileDef("RSVP", "RSVP高速表示", Icons.Default.PlayArrow),
+        TileDef("NIGHT_MODE", "夜間・眼精疲労軽減", Icons.Default.Book),
+        TileDef("BOOKMARK", "しおり・付箋登録", Icons.Default.Book)
+    )
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-        // 表示するタイル (並び順変更可能)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline))
+            .padding(12.dp)
+    ) {
         Text(
-            text = "表示するタイル (並び順変更可能)",
+            text = "有効なタイル (ドラッグ/チェック順に配置)",
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(vertical = 6.dp)
+            modifier = Modifier.padding(bottom = 6.dp)
         )
 
         selectedTiles.forEachIndexed { index, tileName ->
-            val tile = allTiles.firstOrNull { it.name == tileName }
-            if (tile != null) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+            val tile = allTiles.find { it.name == tileName } ?: return@forEachIndexed
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+            ) {
+                Icon(imageVector = tile.iconDefault, contentDescription = tile.label, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(text = tile.label, modifier = Modifier.weight(1f), fontSize = 13.sp)
+
+                // 移動ボタン
+                IconButton(
+                    onClick = {
+                        if (index > 0) {
+                            val temp = selectedTiles[index]
+                            selectedTiles[index] = selectedTiles[index - 1]
+                            selectedTiles[index - 1] = temp
+                            val jsonArray = org.json.JSONArray()
+                            selectedTiles.forEach { jsonArray.put(it) }
+                            onTilesChanged(jsonArray.toString())
+                        }
+                    },
+                    enabled = index > 0,
+                    modifier = Modifier.size(24.dp)
                 ) {
-                    Icon(
-                        imageVector = tile.iconDefault,
-                        contentDescription = tile.label,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(text = tile.label, modifier = Modifier.weight(1f))
+                    Icon(imageVector = Icons.Default.KeyboardArrowUp, contentDescription = "上へ", modifier = Modifier.size(16.dp))
+                }
+                IconButton(
+                    onClick = {
+                        if (index < selectedTiles.size - 1) {
+                            val temp = selectedTiles[index]
+                            selectedTiles[index] = selectedTiles[index + 1]
+                            selectedTiles[index + 1] = temp
+                            val jsonArray = org.json.JSONArray()
+                            selectedTiles.forEach { jsonArray.put(it) }
+                            onTilesChanged(jsonArray.toString())
+                        }
+                    },
+                    enabled = index < selectedTiles.size - 1,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.KeyboardArrowDown, contentDescription = "下へ", modifier = Modifier.size(16.dp))
+                }
 
-                    // 上下ボタン
-                    IconButton(
-                        onClick = {
-                            if (index > 0) {
-                                val temp = selectedTiles[index]
-                                selectedTiles[index] = selectedTiles[index - 1]
-                                selectedTiles[index - 1] = temp
-                                val jsonArray = org.json.JSONArray()
-                                selectedTiles.forEach { jsonArray.put(it) }
-                                onTilesChanged(jsonArray.toString())
-                            }
-                        },
-                        enabled = index > 0,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "上へ移動",
-                            tint = if (index > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                        )
-                    }
+                Spacer(modifier = Modifier.width(8.dp))
 
-                    IconButton(
-                        onClick = {
-                            if (index < selectedTiles.size - 1) {
-                                val temp = selectedTiles[index]
-                                selectedTiles[index] = selectedTiles[index + 1]
-                                selectedTiles[index + 1] = temp
-                                val jsonArray = org.json.JSONArray()
-                                selectedTiles.forEach { jsonArray.put(it) }
-                                onTilesChanged(jsonArray.toString())
-                            }
-                        },
-                        enabled = index < selectedTiles.size - 1,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "下へ移動",
-                            tint = if (index < selectedTiles.size - 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Switch(
-                        checked = true,
-                        onCheckedChange = {
+                // 削除
+                IconButton(
+                    onClick = {
+                        if (selectedTiles.size > 1) {
                             selectedTiles.removeAt(index)
                             val jsonArray = org.json.JSONArray()
                             selectedTiles.forEach { jsonArray.put(it) }
                             onTilesChanged(jsonArray.toString())
                         }
-                    )
+                    },
+                    enabled = selectedTiles.size > 1,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "解除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                 }
             }
         }

@@ -463,14 +463,38 @@ class BookRepository(
         } else {
             settings.statsReadingTimeToday to settings.statsReadingTimeYesterday
         }
+        
+        val historyJsonStr = settings.statsReadingTimeHistoryJson
+        val historyJson = try {
+            org.json.JSONObject(historyJsonStr)
+        } catch (e: Exception) {
+            org.json.JSONObject()
+        }
+        
+        val currentTodayVal = if (historyJson.has(todayStr)) historyJson.getLong(todayStr) else 0L
+        historyJson.put(todayStr, currentTodayVal + seconds)
+        
+        if (historyJson.length() > 365) {
+            val keys = mutableListOf<String>()
+            val keyIterator = historyJson.keys()
+            while (keyIterator.hasNext()) {
+                keys.add(keyIterator.next())
+            }
+            keys.sorted().take(keys.size - 365).forEach { keyToRemove ->
+                historyJson.remove(keyToRemove)
+            }
+        }
+        
         val updated = settings.copy(
             statsReadingTimeToday = newTodayTime + seconds,
             statsReadingTimeYesterday = newYesterdayTime,
             statsReadingTimeCumulative = settings.statsReadingTimeCumulative + seconds,
             statsLastActiveDay = todayStr,
-            statsReadCharacters = settings.statsReadCharacters + charactersCount
+            statsReadCharacters = settings.statsReadCharacters + charactersCount,
+            statsReadingTimeHistoryJson = historyJson.toString()
         )
         updateAppSettings(updated)
+        cc.namekuji.tumugi.widget.ReadingTimeWidgetProvider.triggerUpdate(context)
     }
 }
 

@@ -1,5 +1,9 @@
 package cc.namekuji.tumugi.ui.bookshelf
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontFamily
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,6 +28,7 @@ import cc.namekuji.tumugi.ui.settings.DropdownSettingRow
 import androidx.compose.animation.core.*
 import androidx.compose.ui.draw.alpha
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,62 +75,78 @@ fun BookshelfScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(text = if (currentFolderId == null) "本棚" else "フォルダ内") },
-                navigationIcon = {
-                    IconButton(onClick = onMenuClick) {
-                        Icon(imageVector = Icons.Default.Menu, contentDescription = "メニュー")
-                    }
-                },
-                actions = {
-                    if (currentFolderId != null) {
-                        IconButton(onClick = { viewModel.selectFolder(null) }) {
-                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "戻る")
-                        }
-                    }
-                    // 表示切り替えボタン
-                    IconButton(onClick = {
-                        val currentType = when (activeFilter) {
-                            "epub" -> settings.bookshelfViewTypeEpub
-                            "cbz" -> settings.bookshelfViewTypeCbz
-                            else -> settings.bookshelfViewTypeAll
-                        }
-                        val newType = if (currentType == "GRID") "LIST" else "GRID"
-                        val updated = when (activeFilter) {
-                            "epub" -> settings.copy(bookshelfViewTypeEpub = newType)
-                            "cbz" -> settings.copy(bookshelfViewTypeCbz = newType)
-                            else -> settings.copy(bookshelfViewTypeAll = newType)
-                        }
-                        viewModel.updateSettings(updated)
-                    }) {
-                        val currentType = when (activeFilter) {
-                            "epub" -> settings.bookshelfViewTypeEpub
-                            "cbz" -> settings.bookshelfViewTypeCbz
-                            else -> settings.bookshelfViewTypeAll
-                        }
-                        Icon(
-                            imageVector = if (currentType == "GRID") Icons.AutoMirrored.Filled.List else Icons.Default.GridView,
-                            contentDescription = "表示切り替え"
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = if (currentFolderId == null) "Tumugi" else "フォルダ内",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
                         )
-                    }
-                    var showFilterDialog by remember { mutableStateOf(false) }
-                    IconButton(onClick = { showFilterDialog = true }) {
-                        Icon(imageVector = Icons.Default.FilterList, contentDescription = "ソート・フィルタ")
-                    }
-                    IconButton(onClick = { showCreateFolderDialog = true }) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "フォルダ作成")
-                    }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onMenuClick) {
+                            Icon(imageVector = Icons.Default.Menu, contentDescription = "メニュー", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    },
+                    actions = {
+                        if (currentFolderId != null) {
+                            IconButton(onClick = { viewModel.selectFolder(null) }) {
+                                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "戻る", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        // 表示切り替えボタン
+                        IconButton(onClick = {
+                            val currentType = when (activeFilter) {
+                                "epub" -> settings.bookshelfViewTypeEpub
+                                "cbz" -> settings.bookshelfViewTypeCbz
+                                else -> settings.bookshelfViewTypeAll
+                            }
+                            val newType = if (currentType == "GRID") "LIST" else "GRID"
+                            val updated = when (activeFilter) {
+                                "epub" -> settings.copy(bookshelfViewTypeEpub = newType)
+                                "cbz" -> settings.copy(bookshelfViewTypeCbz = newType)
+                                else -> settings.copy(bookshelfViewTypeAll = newType)
+                            }
+                            viewModel.updateSettings(updated)
+                        }) {
+                            val currentType = when (activeFilter) {
+                                "epub" -> settings.bookshelfViewTypeEpub
+                                "cbz" -> settings.bookshelfViewTypeCbz
+                                else -> settings.bookshelfViewTypeAll
+                            }
+                            Icon(
+                                imageVector = if (currentType == "GRID") Icons.AutoMirrored.Filled.List else Icons.Default.GridView,
+                                contentDescription = "表示切り替え",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        var showFilterDialog by remember { mutableStateOf(false) }
+                        IconButton(onClick = { showFilterDialog = true }) {
+                            Icon(imageVector = Icons.Default.FilterList, contentDescription = "ソート・フィルタ", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { showCreateFolderDialog = true }) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = "フォルダ作成", tint = MaterialTheme.colorScheme.primary)
+                        }
 
-                    if (showFilterDialog) {
-                        BookshelfFilterSortDialog(
-                            settings = settings,
-                            uiState = uiState,
-                            viewModel = viewModel,
-                            onDismiss = { showFilterDialog = false }
-                        )
-                    }
-                }
-            )
+                        if (showFilterDialog) {
+                            BookshelfFilterSortDialog(
+                                settings = settings,
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onDismiss = { showFilterDialog = false }
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        navigationIconContentColor = MaterialTheme.colorScheme.primary,
+                        actionIconContentColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
+            }
         },
         modifier = modifier
     ) { innerPadding ->
@@ -135,12 +156,45 @@ fun BookshelfScreen(
                 .padding(innerPadding)
         ) {
             // フィルタータブ
-            TabRow(selectedTabIndex = when (activeFilter) {
-                "all" -> 0; "epub" -> 1; "cbz" -> 2; else -> 0
-            }) {
-                Tab(selected = activeFilter == "all", onClick = { viewModel.setFilter("all") }, text = { Text("すべて") })
-                Tab(selected = activeFilter == "epub", onClick = { viewModel.setFilter("epub") }, text = { Text("EPUB") })
-                Tab(selected = activeFilter == "cbz", onClick = { viewModel.setFilter("cbz") }, text = { Text("CBZ") })
+            TabRow(
+                selectedTabIndex = when (activeFilter) {
+                    "all" -> 0; "epub" -> 1; "cbz" -> 2; else -> 0
+                },
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.primary,
+                indicator = { tabPositions ->
+                    val activeIndex = when (activeFilter) {
+                        "all" -> 0; "epub" -> 1; "cbz" -> 2; else -> 0
+                    }
+                    if (activeIndex < tabPositions.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[activeIndex]),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            ) {
+                Tab(
+                    selected = activeFilter == "all",
+                    onClick = { viewModel.setFilter("all") },
+                    text = { Text("すべて", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                    selectedContentColor = MaterialTheme.colorScheme.primary,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Tab(
+                    selected = activeFilter == "epub",
+                    onClick = { viewModel.setFilter("epub") },
+                    text = { Text("EPUB", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                    selectedContentColor = MaterialTheme.colorScheme.primary,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Tab(
+                    selected = activeFilter == "cbz",
+                    onClick = { viewModel.setFilter("cbz") },
+                    text = { Text("CBZ", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                    selectedContentColor = MaterialTheme.colorScheme.primary,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             val currentViewType = when (activeFilter) {
@@ -192,21 +246,23 @@ fun BookshelfScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RectangleShape)
+                                        .clip(MaterialTheme.shapes.small)
                                         .clickable { viewModel.toggleFoldersCollapsed() }
                                         .padding(vertical = 8.dp, horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "フォルダ (${uiState.folders.size})",
-                                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        text = "FOLDERS (${uiState.folders.size})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Icon(
                                         imageVector = if (uiState.isFoldersCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                                         contentDescription = "Toggle Folders",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -228,21 +284,23 @@ fun BookshelfScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RectangleShape)
+                                        .clip(MaterialTheme.shapes.small)
                                         .clickable { viewModel.toggleBooksCollapsed() }
                                         .padding(vertical = 8.dp, horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "書籍 (${uiState.books.size})",
-                                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        text = "BOOKS (${uiState.books.size})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Icon(
                                         imageVector = if (uiState.isBooksCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                                         contentDescription = "Toggle Books",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -268,21 +326,23 @@ fun BookshelfScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RectangleShape)
+                                        .clip(MaterialTheme.shapes.small)
                                         .clickable { viewModel.toggleFoldersCollapsed() }
                                         .padding(vertical = 8.dp, horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "フォルダ (${uiState.folders.size})",
-                                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        text = "FOLDERS (${uiState.folders.size})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Icon(
                                         imageVector = if (uiState.isFoldersCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                                         contentDescription = "Toggle Folders",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -304,21 +364,23 @@ fun BookshelfScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RectangleShape)
+                                        .clip(MaterialTheme.shapes.small)
                                         .clickable { viewModel.toggleBooksCollapsed() }
                                         .padding(vertical = 8.dp, horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "書籍 (${uiState.books.size}) (最後に読んだ順)  ※長押しで詳細",
-                                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        text = "BOOKS (${uiState.books.size}) (LAST READ FIRST)",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Icon(
                                         imageVector = if (uiState.isBooksCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                                         contentDescription = "Toggle Books",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -364,116 +426,266 @@ fun BookshelfScreen(
 
         AlertDialog(
             onDismissRequest = onDismiss,
+            shape = MaterialTheme.shapes.large,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant, // #18181B
+            tonalElevation = 0.dp,
             title = {
-                Text(
-                    text = book.title,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // ステータスバッジ
-                    Surface(
-                        color = when (book.readStatus) {
-                            ReadStatus.UNREAD -> MaterialTheme.colorScheme.surfaceVariant
-                            ReadStatus.READING -> MaterialTheme.colorScheme.primaryContainer
-                            ReadStatus.COMPLETED -> MaterialTheme.colorScheme.tertiaryContainer
-                        },
-                        shape = RectangleShape
-                    ) {
-                        Text(
-                            text = when (book.readStatus) {
-                                ReadStatus.UNREAD -> "未読"
-                                ReadStatus.READING -> "読書中"
-                                ReadStatus.COMPLETED -> "読了"
-                            },
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "BOOK DETAILS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "閉じる",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Cover & Core Info Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        // Cover preview
+                        Box(
+                            modifier = Modifier
+                                .width(60.dp)
+                                .height(90.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), MaterialTheme.shapes.small),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (book.coverImagePath != null && File(book.coverImagePath).exists()) {
+                                AsyncImage(
+                                    model = File(book.coverImagePath),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (book.formatType == BookFormat.EPUB) Icons.Default.Book else Icons.Default.Menu,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
 
-                    HorizontalDivider()
+                        Spacer(modifier = Modifier.width(12.dp))
 
-                    // 読書履歴情報
-                    HistoryInfoRow(label = "著者", value = book.author.ifBlank { "不明" })
-                    HistoryInfoRow(label = "形式", value = book.formatType.name)
-                    HistoryInfoRow(label = "最終既読", value = lastReadText)
-                    HistoryInfoRow(label = "進捗", value = "${book.currentChapterIndex + 1} / ${book.totalChapters} 章 ($progressPercent%)")
-                    if (finishedText != null) {
-                        HistoryInfoRow(label = "読了日", value = finishedText)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = book.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "by ${book.author.ifBlank { "不明" }}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            // Format chip
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = book.formatType.name,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.extraSmall)
+                                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), MaterialTheme.shapes.extraSmall)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
 
-                    // 進捗バー
-                    LinearProgressIndicator(
-                        progress = { if (book.totalChapters > 0) book.currentChapterIndex.toFloat() / book.totalChapters.toFloat() else 0f },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = if (book.formatType == BookFormat.EPUB) Color(0xFF1565C0) else Color(0xFFE65100)
-                    )
+                    // Bento Grid Metadata Table
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                            .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), MaterialTheme.shapes.small)
+                            .padding(10.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("PROGRESS", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${progressPercent}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        LinearProgressIndicator(
+                                            progress = { if (book.totalChapters > 0) book.currentChapterIndex.toFloat() / book.totalChapters.toFloat() else 0f },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(3.dp)
+                                                .clip(MaterialTheme.shapes.extraSmall),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            trackColor = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("LAST READ", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(lastReadText, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("CHAPTERS", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("${book.currentChapterIndex + 1} / ${book.totalChapters}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("STATUS", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = when (book.readStatus) {
+                                            ReadStatus.UNREAD -> "未読"
+                                            ReadStatus.READING -> "読書中"
+                                            ReadStatus.COMPLETED -> "読了"
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("FAVORITE", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    var isFav by remember(book.id) { mutableStateOf(book.isFavorite) }
+                                    Icon(
+                                        imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                                        contentDescription = null,
+                                        tint = if (isFav) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clickable {
+                                                viewModel.toggleFavorite(book)
+                                                isFav = !isFav
+                                            }
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                    // 文字エンコード設定
+                    // Encoding settings
                     EncodingDropdown(
                         currentValue = encodingInput,
                         onValueChange = { encodingInput = it }
                     )
 
-                    // タグ編集
+                    // Tag editor
                     OutlinedTextField(
                         value = tagsInput,
                         onValueChange = { tagsInput = it },
-                        label = { Text("カスタムタグ (カンマ区切り)", fontSize = 11.sp) },
+                        label = { Text("カスタムタグ (カンマ区切り)", fontSize = 10.sp, fontFamily = FontFamily.Monospace) },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        )
                     )
                 }
             },
             confirmButton = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // 履歴クリアボタン
-                    if (book.lastReadAt > 0 || book.readStatus != ReadStatus.UNREAD) {
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.clearReadingHistory(book)
-                                onDismiss()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.secondary
-                            )
-                        ) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("読書履歴をクリア")
-                        }
-                    }
-
-                    // 削除ボタン（赤・確認ダイアログ経由）
-                    OutlinedButton(
+                    // Play / Continue button (Filled, White background, black text)
+                    Button(
                         onClick = {
                             onDismiss()
-                            showDeleteConfirm = true
+                            onBookClick(book.id)
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth().height(36.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("本棚から削除")
+                        Text("読書を再開", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("閉じる") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Clear history button
+                        if (book.lastReadAt > 0 || book.readStatus != ReadStatus.UNREAD) {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.clearReadingHistory(book)
+                                    onDismiss()
+                                },
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.weight(1f).height(36.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ) {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("履歴消去", fontSize = 11.sp)
+                            }
+                        }
+
+                        // Delete button
+                        OutlinedButton(
+                            onClick = {
+                                onDismiss()
+                                showDeleteConfirm = true
+                            },
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.weight(1f).height(36.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(imageVector = Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("本棚から削除", fontSize = 11.sp)
+                        }
+                    }
                 }
             },
             dismissButton = null
@@ -547,29 +759,35 @@ fun FolderStackItem(
     }
 
     Card(
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RectangleShape)
+            .clip(MaterialTheme.shapes.small)
             .combinedClickable(onClick = onClick),
-        shape = RectangleShape
+        shape = MaterialTheme.shapes.small
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             FolderCoverPreview(covers = covers)
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = folder.name,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Icon(imageVector = Icons.Default.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
@@ -588,30 +806,29 @@ fun BookStackItem(
         book.currentChapterIndex.toFloat() / book.totalChapters.toFloat() else 0f
     val progressPercent = (progressFraction * 100).toInt()
 
-    val progressText = when (book.readStatus) {
-        ReadStatus.UNREAD -> "未読"
-        ReadStatus.READING -> "読書中 ${progressPercent}%"
-        ReadStatus.COMPLETED -> "読了"
-    }
-
-    val spineColor = if (book.formatType == BookFormat.EPUB) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-    val bgColor = MaterialTheme.colorScheme.surfaceVariant
-
     Card(
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RectangleShape)
+            .clip(MaterialTheme.shapes.small)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RectangleShape
+        shape = MaterialTheme.shapes.small
     ) {
-        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            // 背表紙カラー帯
-            Box(modifier = Modifier.width(8.dp).fillMaxHeight().background(spineColor))
-
-            // 表紙カラーエリア / 表紙画像
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Cover Image
             Box(
-                modifier = Modifier.width(60.dp).fillMaxHeight().background(bgColor),
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(60.dp)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)), MaterialTheme.shapes.extraSmall),
                 contentAlignment = Alignment.Center
             ) {
                 if (book.coverImagePath != null && File(book.coverImagePath).exists()) {
@@ -622,50 +839,82 @@ fun BookStackItem(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(4.dp)) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(2.dp)
+                    ) {
                         Icon(
                             imageVector = if (book.formatType == BookFormat.EPUB) Icons.Default.Book else Icons.Default.Menu,
-                            contentDescription = null, tint = spineColor, modifier = Modifier.size(22.dp)
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = book.formatType.name, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = spineColor)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = book.formatType.name,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
 
-            // テキスト情報
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Book Details
             Column(
-                modifier = Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 2.dp)
             ) {
-                Text(text = book.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (book.author.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = book.author, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = book.title,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (book.author.isNotBlank()) book.author else "作者不明",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Progress Info Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${progressPercent}%",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "${book.currentChapterIndex + 1} / ${book.totalChapters} p",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 LinearProgressIndicator(
                     progress = { progressFraction },
-                    modifier = Modifier.fillMaxWidth().height(4.dp),
-                    color = spineColor,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .clip(MaterialTheme.shapes.extraSmall),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.outline
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = progressText, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = spineColor)
-            }
-
-            // ステータスバッジ
-            Box(modifier = Modifier.padding(end = 12.dp).align(Alignment.CenterVertically)) {
-                if (book.readStatus == ReadStatus.COMPLETED) {
-                    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RectangleShape) {
-                        Text(
-                            text = "読了",
-                            fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
             }
         }
     }
@@ -686,13 +935,14 @@ fun BookCardItem(
     val progressPercent = (progressFraction * 100).toInt()
 
     Card(
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(0.7f)
-            .clip(RectangleShape)
+            .clip(MaterialTheme.shapes.small)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RectangleShape
+        shape = MaterialTheme.shapes.small
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (book.coverImagePath != null && File(book.coverImagePath).exists()) {
@@ -704,44 +954,66 @@ fun BookCardItem(
                 )
             } else {
                 Box(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (book.formatType == BookFormat.EPUB) Icons.Default.Book else Icons.Default.Menu,
-                        contentDescription = null, 
-                        tint = MaterialTheme.colorScheme.primary, 
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(36.dp)
                     )
                 }
+            }
+
+            if (book.isFavorite) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = "Favorite",
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(16.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(2.dp))
+                        .padding(2.dp)
+                )
             }
 
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.7f))
+                    .background(Color.Black.copy(alpha = 0.85f))
                     .padding(6.dp)
             ) {
                 Text(
                     text = book.title,
                     color = Color.White,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = when (book.readStatus) {
-                        ReadStatus.UNREAD -> "未読 (0/${book.totalChapters})"
-                        ReadStatus.READING -> "読書中 ${book.currentChapterIndex}/${book.totalChapters} (${progressPercent}%)"
-                        ReadStatus.COMPLETED -> "読了 (${book.totalChapters}/${book.totalChapters})"
-                    },
-                    color = if (book.readStatus == ReadStatus.COMPLETED) Color(0xFF4CAF50) else Color(0xFFFFB74D),
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = when (book.readStatus) {
+                            ReadStatus.UNREAD -> "未読"
+                            ReadStatus.READING -> "読書中 ${progressPercent}%"
+                            ReadStatus.COMPLETED -> "読了"
+                        },
+                        color = if (book.readStatus == ReadStatus.COMPLETED) Color(0xFF10B981) else Color(0xFFC4C7C8),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
 
             if (book.readStatus == ReadStatus.READING && progressFraction > 0f) {
@@ -750,8 +1022,8 @@ fun BookCardItem(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(3.dp),
-                    color = Color(0xFFFF9800),
+                        .height(2.dp),
+                    color = MaterialTheme.colorScheme.primary,
                     trackColor = Color.Transparent
                 )
             }

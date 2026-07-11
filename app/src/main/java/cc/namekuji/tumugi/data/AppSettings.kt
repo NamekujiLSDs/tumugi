@@ -96,7 +96,15 @@ data class AppSettings(
     val quickMenuColumns: Int = 4,
     val rsvpScreenOrientation: Int = 0,
     val countdownSeconds: Int = 3,
-    val enableMusicControls: Boolean = false
+    val enableMusicControls: Boolean = false,
+    val startupScreen: String = "BOOKSHELF_ALL",
+    val widgetSortType: Int = 0,
+    val statsReadingTimeHistoryJson: String = "{}",
+    val quickMenuRows: Int = 1,
+    val widgetPinFavorites: Boolean = false,
+    val bookshelfPinFavorites: Boolean = true,
+    val navTapScrollAmount: String = "PAGE_1",
+    val navVolumeScrollAmount: String = "PAGE_1"
 )
 
 class SettingsConverters {

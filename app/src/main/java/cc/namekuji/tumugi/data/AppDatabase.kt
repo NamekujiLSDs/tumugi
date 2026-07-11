@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [Folder::class, Book::class, AppSettings::class, Bookmark::class],
-    version = 12,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class, SettingsConverters::class)
@@ -166,6 +166,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN startupScreen TEXT NOT NULL DEFAULT 'BOOKSHELF_ALL'")
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN widgetSortType INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN statsReadingTimeHistoryJson TEXT NOT NULL DEFAULT '{}'")
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN quickMenuRows INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN widgetPinFavorites INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN bookshelfPinFavorites INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE books ADD COLUMN isFavorite INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN navTapScrollAmount TEXT NOT NULL DEFAULT 'PAGE_1'")
+                db.execSQL("ALTER TABLE app_settings ADD COLUMN navVolumeScrollAmount TEXT NOT NULL DEFAULT 'PAGE_1'")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -177,7 +196,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
                     MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
                     MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
-                    MIGRATION_10_11, MIGRATION_11_12
+                    MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+                    MIGRATION_13_14
                 )
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {

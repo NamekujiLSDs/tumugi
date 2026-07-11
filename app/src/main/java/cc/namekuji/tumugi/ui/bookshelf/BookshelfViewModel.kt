@@ -30,6 +30,13 @@ class BookshelfViewModel(private val repository: BookRepository) : ViewModel() {
     init {
         viewModelScope.launch {
             repository.ensureCoversExtracted()
+            val startup = repository.getAppSettingsDirect()?.startupScreen
+            if (startup != null) {
+                when (startup) {
+                    "BOOKSHELF_EPUB" -> formatFilter.value = "epub"
+                    "BOOKSHELF_CBZ" -> formatFilter.value = "cbz"
+                }
+            }
         }
     }
 
@@ -93,10 +100,17 @@ class BookshelfViewModel(private val repository: BookRepository) : ViewModel() {
         }
 
         // 3. Sorting
-        val sortedBooks = when (settings?.bookshelfSortType ?: 0) {
+        val baseSorted = when (settings?.bookshelfSortType ?: 0) {
             1 -> tagFilteredBooks.sortedBy { it.title }
             2 -> tagFilteredBooks.sortedByDescending { it.id }
             else -> tagFilteredBooks.sortedByDescending { it.lastReadAt }
+        }
+
+        val sortedBooks = if (settings?.bookshelfPinFavorites == true) {
+            val (favorites, others) = baseSorted.partition { it.isFavorite }
+            favorites + others
+        } else {
+            baseSorted
         }
 
         BookshelfUiState(
@@ -186,6 +200,12 @@ class BookshelfViewModel(private val repository: BookRepository) : ViewModel() {
     fun updateBook(book: Book) {
         viewModelScope.launch {
             repository.updateBook(book)
+        }
+    }
+
+    fun toggleFavorite(book: Book) {
+        viewModelScope.launch {
+            repository.updateBook(book.copy(isFavorite = !book.isFavorite))
         }
     }
 }

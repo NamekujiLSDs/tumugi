@@ -28,9 +28,23 @@ import cc.namekuji.tumugi.ui.reader.ReaderScreen
 import cc.namekuji.tumugi.ui.reader.ReaderViewModel
 import cc.namekuji.tumugi.ui.settings.SettingsScreen
 import cc.namekuji.tumugi.ui.settings.SettingsViewModel
-import cc.namekuji.tumugi.ui.sync.FolderSyncScreen
-import cc.namekuji.tumugi.ui.sync.FolderSyncViewModel
 import cc.namekuji.tumugi.ui.theme.TumugiTheme
+import cc.namekuji.tumugi.ui.history.HistoryScreen
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Settings
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.get
@@ -60,14 +74,6 @@ class MainActivity : ComponentActivity() {
             val settings = settingsState.value ?: AppSettings()
 
             val activity = LocalContext.current as? Activity
-            LaunchedEffect(settings.brightnessValue) {
-                activity?.let { act ->
-                    val window = act.window
-                    val params = window.attributes
-                    params.screenBrightness = if (settings.brightnessValue >= 0f) settings.brightnessValue else -1f
-                    window.attributes = params
-                }
-            }
             LaunchedEffect(settings.screenRotationLock, settings.readerRefreshRate) {
                 activity?.let { act ->
                     // 1. Apply Screen Orientation Lock
@@ -123,8 +129,10 @@ class MainActivity : ComponentActivity() {
                 themeMode = settings.themeMode,
                 accentColorHex = settings.uiAccentColor
             ) {
+                val widgetBookId = remember { intent.getStringExtra("bookId") }
                 MainAppContainer(
                     volumeKeyEventFlow = volumeKeyEventFlow,
+                    initialBookId = widgetBookId,
                     onReaderStateChanged = { active -> isReaderActive = active }
                 )
             }
@@ -144,105 +152,129 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainAppContainer(
     volumeKeyEventFlow: MutableSharedFlow<Int>,
+    initialBookId: String?,
     onReaderStateChanged: (Boolean) -> Unit
 ) {
     val repository: BookRepository = org.koin.compose.koinInject()
     val settingsState = repository.appSettings.collectAsState(initial = null)
     val navController = rememberNavController()
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
 
-    var hasAutoResumed by remember { mutableStateOf(false) }
-    LaunchedEffect(settingsState.value) {
-        val s = settingsState.value
-        if (s != null && s.enableResumeOnStart && s.lastReadBookId != null && !hasAutoResumed) {
-            hasAutoResumed = true
-            navController.navigate("reader/${s.lastReadBookId}")
+    val settings = settingsState.value
+    if (settings == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
+        return
     }
+
+    val dynamicStartDestination = if (settings.startupScreen == "HISTORY") "history" else "bookshelf"
 
     // 現在のルートを監視
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route ?: ""
     val isReader = currentRoute.startsWith("reader/")
 
-    LaunchedEffect(isReader) {
-        onReaderStateChanged(isReader)
-        // 読書画面に入ったらドロワーを強制的に閉じる
-        if (isReader && drawerState.isOpen) {
-            drawerState.close()
+    var hasAutoResumed by remember { mutableStateOf(false) }
+    LaunchedEffect(settingsState.value) {
+        if (initialBookId != null) {
+            hasAutoResumed = true
+            navController.navigate("reader/$initialBookId")
+            return@LaunchedEffect
+        }
+        val s = settingsState.value
+        if (s != null && !hasAutoResumed) {
+            hasAutoResumed = true
+            if (s.startupScreen == "RESUME_LAST" && s.lastReadBookId != null) {
+                navController.navigate("reader/${s.lastReadBookId}")
+            }
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        // 読書画面ではスワイプジェスチャーを無効化（縦/横スクロールと競合するため）
-        gesturesEnabled = !isReader,
-        drawerContent = {
-            ModalDrawerSheet {
-                Spacer(modifier = Modifier.height(12.dp))
-                NavigationDrawerItem(
-                    label = { Text("本棚") },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        navController.navigate("bookshelf") {
-                            popUpTo("bookshelf") { inclusive = true }
-                        }
+    LaunchedEffect(isReader) {
+        onReaderStateChanged(isReader)
+    }
+
+    Scaffold(
+        bottomBar = {
+            if (!isReader) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    tonalElevation = 0.dp,
+                    modifier = Modifier.border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline))
+                ) {
+                    val screens: List<Triple<String, String, ImageVector>> = listOf(
+                        Triple("bookshelf", "本棚", Icons.Default.Book),
+                        Triple("history", "履歴", Icons.Default.History),
+                        Triple("settings", "設定", Icons.Default.Settings)
+                    )
+                    screens.forEach { (route, label, icon) ->
+                        val selected = currentRoute == route
+                        NavigationBarItem(
+                            selected = selected,
+                            onClick = {
+                                if (currentRoute != route) {
+                                    navController.navigate(route) {
+                                        popUpTo(navController.graph.startDestinationId) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                }
+                            },
+                            icon = { Icon(imageVector = icon, contentDescription = label) },
+                            label = { Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                indicatorColor = Color.Transparent
+                            )
+                        )
                     }
-                )
-                NavigationDrawerItem(
-                    label = { Text("フォルダ同期") },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        navController.navigate("folder_sync")
-                    }
-                )
-                NavigationDrawerItem(
-                    label = { Text("設定") },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        navController.navigate("settings")
-                    }
-                )
+                }
             }
         }
-    ) {
-        NavHost(navController = navController, startDestination = "bookshelf") {
-            composable("bookshelf") {
-                val bookshelfViewModel: BookshelfViewModel = koinViewModel()
-                BookshelfScreen(
-                    viewModel = bookshelfViewModel,
-                    onMenuClick = { scope.launch { drawerState.open() } },
-                    onBookClick = { bookId ->
-                        navController.navigate("reader/$bookId")
-                    }
-                )
-            }
-            composable("settings") {
-                val settingsViewModel: SettingsViewModel = koinViewModel()
-                SettingsScreen(
-                    viewModel = settingsViewModel,
-                    onMenuClick = { scope.launch { drawerState.open() } }
-                )
-            }
-            composable("folder_sync") {
-                val folderSyncViewModel: FolderSyncViewModel = koinViewModel()
-                FolderSyncScreen(
-                    viewModel = folderSyncViewModel,
-                    onMenuClick = { scope.launch { drawerState.open() } }
-                )
-            }
-            composable("reader/{bookId}") { backStackEntry ->
-                val bookId = backStackEntry.arguments?.getString("bookId") ?: ""
-                val readerViewModel: ReaderViewModel = koinViewModel()
-                ReaderScreen(
-                    viewModel = readerViewModel,
-                    bookId = bookId,
-                    volumeKeyEventFlow = volumeKeyEventFlow,
-                    onBackClick = { navController.popBackStack() }
-                )
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            NavHost(navController = navController, startDestination = dynamicStartDestination) {
+                composable("bookshelf") {
+                    val bookshelfViewModel: BookshelfViewModel = koinViewModel()
+                    BookshelfScreen(
+                        viewModel = bookshelfViewModel,
+                        onMenuClick = { },
+                        onBookClick = { bookId ->
+                            navController.navigate("reader/$bookId")
+                        }
+                    )
+                }
+                composable("history") {
+                    val bookshelfViewModel: BookshelfViewModel = koinViewModel()
+                    HistoryScreen(
+                        viewModel = bookshelfViewModel,
+                        onMenuClick = { },
+                        onBookClick = { bookId ->
+                            navController.navigate("reader/$bookId")
+                        }
+                    )
+                }
+                composable("settings") {
+                    val settingsViewModel: SettingsViewModel = koinViewModel()
+                    SettingsScreen(
+                        viewModel = settingsViewModel,
+                        onMenuClick = { }
+                    )
+                }
+                composable("reader/{bookId}") { backStackEntry ->
+                    val bookId = backStackEntry.arguments?.getString("bookId") ?: ""
+                    val readerViewModel: ReaderViewModel = koinViewModel()
+                    ReaderScreen(
+                        viewModel = readerViewModel,
+                        bookId = bookId,
+                        volumeKeyEventFlow = volumeKeyEventFlow,
+                        onBackClick = { navController.popBackStack() }
+                    )
+                }
             }
         }
     }

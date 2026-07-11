@@ -98,44 +98,68 @@ object CbzParser {
             return File(virtualPath)
         }
         try {
-            // cbzip://filePath/entryName のパース。filePath はコロンを含む絶対パスの場合あり。
             val cleanPath = virtualPath.substring(8)
-            // 最後のスラッシュ以前がZIPファイルパス、以降がエントリー名とは限らない（エントリー内に階層があるため）
-            // そのため、実在するファイル名を探る
+            val normalizedPath = cleanPath.replace('\\', '/')
+
+            val dotCbzIndex = normalizedPath.lowercase().indexOf(".cbz/")
+            val dotZipIndex = normalizedPath.lowercase().indexOf(".zip/")
+
             var zipPath = ""
             var entryName = ""
-            for (i in cleanPath.indices) {
-                val testPath = cleanPath.substring(0, i + 1)
-                if (testPath.endsWith(".cbz") || testPath.endsWith(".zip") || File(testPath).exists()) {
-                    zipPath = testPath
-                    entryName = cleanPath.substring(i + 2) // スラッシュの分
+
+            if (dotCbzIndex != -1) {
+                zipPath = cleanPath.substring(0, dotCbzIndex + 4)
+                entryName = normalizedPath.substring(dotCbzIndex + 5)
+            } else if (dotZipIndex != -1) {
+                zipPath = cleanPath.substring(0, dotZipIndex + 4)
+                entryName = normalizedPath.substring(dotZipIndex + 5)
+            } else {
+                for (i in normalizedPath.indices) {
+                    val testPath = cleanPath.substring(0, i + 1)
+                    if (testPath.lowercase().endsWith(".cbz") || testPath.lowercase().endsWith(".zip") || File(testPath).exists()) {
+                        zipPath = testPath
+                        entryName = normalizedPath.substring(i + 2)
+                    }
                 }
             }
+
             if (zipPath.isEmpty()) {
-                // フォールバック
-                val parts = cleanPath.split("/", limit = 2)
-                zipPath = parts[0]
+                val parts = normalizedPath.split("/", limit = 2)
+                zipPath = cleanPath.substring(0, parts[0].length)
                 entryName = parts.getOrNull(1) ?: ""
             }
 
             val zipFile = ZipFile(zipPath)
-            val entry = zipFile.getEntry(entryName) ?: return null
+            val entry = zipFile.getEntry(entryName) ?: {
+                var found: java.util.zip.ZipEntry? = null
+                val entries = zipFile.entries()
+                while (entries.hasMoreElements()) {
+                    val e = entries.nextElement()
+                    if (e.name.replace('\\', '/').lowercase() == entryName.lowercase()) {
+                        found = e
+                        break
+                    }
+                }
+                found
+            }() ?: return null
 
             val cacheDir = File(context.cacheDir, "cbz_temp")
             cacheDir.mkdirs()
 
-            // 定期的なキャッシュ容量維持 (5ファイル超過時に古いものを消去)
             val files = cacheDir.listFiles() ?: emptyArray()
-            if (files.size > 10) {
+            if (files.size > 100) {
                 files.sortBy { it.lastModified() }
-                for (i in 0 until (files.size - 5)) {
+                for (i in 0 until (files.size - 50)) {
                     files[i].delete()
                 }
             }
 
             val ext = File(entryName).extension
             val tempFile = File(cacheDir, "${virtualPath.hashCode()}.$ext")
-            if (!tempFile.exists() || tempFile.length() != entry.size) {
+            val isCached = tempFile.exists() && tempFile.length() > 0 &&
+                           (entry.size <= 0 || tempFile.length() == entry.size)
+
+            if (!isCached) {
                 zipFile.getInputStream(entry).use { input ->
                     FileOutputStream(tempFile).use { output ->
                         input.copyTo(output)
@@ -143,7 +167,7 @@ object CbzParser {
                 }
             }
             zipFile.close()
-            // タッチしてタイムスタンプ更新
+
             tempFile.setLastModified(System.currentTimeMillis())
             return tempFile
         } catch (e: Exception) {

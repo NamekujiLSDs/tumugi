@@ -3,6 +3,14 @@ package cc.namekuji.tumugi.ui.reader
 import android.net.Uri
 import android.view.KeyEvent
 import android.content.Intent
+import android.content.Context
+import android.media.session.MediaSessionManager
+import android.media.session.MediaController
+import android.media.MediaMetadata
+import android.media.session.PlaybackState
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -10,6 +18,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +33,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
@@ -89,6 +102,27 @@ fun ReaderScreen(
         view.keepScreenOn = settings.keepScreenOn
     }
 
+    // 画面輝度制御 (ReaderScreenが表示されている間だけ適用し、終了時に復元)
+    val activity = LocalContext.current as? android.app.Activity
+    LaunchedEffect(settings.brightnessValue) {
+        activity?.let { act ->
+            val window = act.window
+            val params = window.attributes
+            params.screenBrightness = if (settings.brightnessValue >= 0f) settings.brightnessValue else -1f
+            window.attributes = params
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.let { act ->
+                val window = act.window
+                val params = window.attributes
+                params.screenBrightness = -1f
+                window.attributes = params
+            }
+        }
+    }
+
     // 初回ロード
     LaunchedEffect(bookId) {
         viewModel.loadBook(bookId)
@@ -136,15 +170,6 @@ fun ReaderScreen(
                             viewModel.updateProgress(currentIndex - 1, 0f)
                         }
                     }
-                } else if (currentBook.formatType == BookFormat.EPUB && epubInfo != null) {
-                    val isNext = keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
-                    val currentIndex = currentBook.currentChapterIndex
-                    val chaptersCount = epubInfo?.chapters?.size ?: 0
-                    if (isNext && currentIndex < chaptersCount - 1) {
-                        viewModel.loadEpubChapter(currentIndex + 1)
-                    } else if (!isNext && currentIndex > 0) {
-                        viewModel.loadEpubChapter(currentIndex - 1)
-                    }
                 }
             }
         }
@@ -181,12 +206,13 @@ fun ReaderScreen(
                     chaptersCount = epubInfo?.chapters?.size ?: 0,
                     scrollPosition = currentBook.scrollPosition,
                     containerHeightDp = containerHeightDp,
+                    volumeKeyEventFlow = volumeKeyEventFlow,
                     onProgressChanged = { index, scroll ->
                         viewModel.updateProgress(index, scroll)
                     },
                     onToggleMenu = { viewModel.toggleMenu() },
-                    onNavigateChapter = { nextIndex ->
-                        viewModel.loadEpubChapter(nextIndex)
+                    onNavigateChapter = { nextIndex, initialScroll ->
+                        viewModel.loadEpubChapter(nextIndex, initialScroll)
                     },
                     onAddMemoBookmark = { selectedText, note ->
                         viewModel.addMemoBookmark(selectedText, note)
@@ -257,11 +283,11 @@ fun ReaderScreen(
                 currentBook = currentBook,
                 epubChapters = epubInfo?.chapters,
                 onSettingsChanged = { viewModel.updateSettings(it) },
-                onChapterSelected = {
+                onChapterSelected = { chapterIndex, initialScroll ->
                     if (currentBook.formatType == BookFormat.EPUB) {
-                        viewModel.loadEpubChapter(it)
+                        viewModel.loadEpubChapter(chapterIndex, initialScroll)
                     } else {
-                        viewModel.updateProgress(it, 0f)
+                        viewModel.updateProgress(chapterIndex, initialScroll)
                     }
                 },
                 onOpenToc = { showTocModal = true },
@@ -331,14 +357,57 @@ fun EpubContentView(
     chaptersCount: Int,
     scrollPosition: Float,
     containerHeightDp: Int,
+    volumeKeyEventFlow: kotlinx.coroutines.flow.SharedFlow<Int>,
     onProgressChanged: (Int, Float) -> Unit,
     onToggleMenu: () -> Unit,
-    onNavigateChapter: (Int) -> Unit,
+    onNavigateChapter: (Int, Float) -> Unit,
     onAddMemoBookmark: (String, String) -> Unit,
     onSettingsChanged: (AppSettings) -> Unit
 ) {
     val context = LocalContext.current
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+    var cssWidth by remember { mutableStateOf(360) }
+    var cssHeight by remember { mutableStateOf(640) }
+
+    var pullDirection by remember { mutableStateOf(0) } // 0 = none, 1 = prev, 2 = next
+    var pullAmount by remember { mutableStateOf(0f) }
+    var pullProgress by remember { mutableStateOf(0f) }
+    var startX by remember { mutableStateOf(0f) }
+    var startY by remember { mutableStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    val calculateProgress = remember {
+        { dragDistance: Float ->
+            if (dragDistance <= 0f) 0f
+            else {
+                val ratio = dragDistance / 250f
+                val tensioned = Math.log(1.0 + ratio * 1.71828).toFloat()
+                tensioned.coerceIn(0f, 1f)
+            }
+        }
+    }
+
+    val tapStepExpr = remember(settings.navTapScrollAmount, cssWidth, cssHeight, settings.epubFontSize, settings.epubLineSpacing) {
+        when (settings.navTapScrollAmount) {
+            "PAGE_05" -> "(${if (settings.epubDirection == EpubDirection.VERTICAL) cssWidth else cssHeight} * 0.5)"
+            "PAGE_03" -> "(${if (settings.epubDirection == EpubDirection.VERTICAL) cssWidth else cssHeight} * 0.3)"
+            "LINES_3" -> "(${settings.epubFontSize} * ${settings.epubLineSpacing} * 3)"
+            "LINES_5" -> "(${settings.epubFontSize} * ${settings.epubLineSpacing} * 5)"
+            "LINES_10" -> "(${settings.epubFontSize} * ${settings.epubLineSpacing} * 10)"
+            else -> "${if (settings.epubDirection == EpubDirection.VERTICAL) cssWidth else cssHeight}"
+        }
+    }
+
+    val volumeStepExpr = remember(settings.navVolumeScrollAmount, cssWidth, cssHeight, settings.epubFontSize, settings.epubLineSpacing) {
+        when (settings.navVolumeScrollAmount) {
+            "PAGE_05" -> "(${if (settings.epubDirection == EpubDirection.VERTICAL) cssWidth else cssHeight} * 0.5)"
+            "PAGE_03" -> "(${if (settings.epubDirection == EpubDirection.VERTICAL) cssWidth else cssHeight} * 0.3)"
+            "LINES_3" -> "(${settings.epubFontSize} * ${settings.epubLineSpacing} * 3)"
+            "LINES_5" -> "(${settings.epubFontSize} * ${settings.epubLineSpacing} * 5)"
+            "LINES_10" -> "(${settings.epubFontSize} * ${settings.epubLineSpacing} * 10)"
+            else -> "${if (settings.epubDirection == EpubDirection.VERTICAL) cssWidth else cssHeight}"
+        }
+    }
     
     // チャプター変更時のレースコンディション（DB更新の遅れ）を防ぐため、最後に読み込んだチャプターを記録
     var lastIndex by remember { mutableStateOf(currentIndex) }
@@ -377,6 +446,37 @@ fun EpubContentView(
                         webView.evaluateJavascript("window.scrollBy(-$step, 0);", null)
                     } else {
                         webView.evaluateJavascript("window.scrollBy(0, $step);", null)
+                    }
+                }
+            }
+        }
+    }
+
+    // 音量ボタン検知の処理 (EPUB)
+    LaunchedEffect(volumeKeyEventFlow) {
+        volumeKeyEventFlow.collect { keyCode ->
+            if (settings.enableAutoScroll) {
+                if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                    onSettingsChanged(settings.copy(enableAutoScroll = false))
+                    return@collect
+                }
+            }
+            if (settings.enableVolumeKeyNav) {
+                val isNext = keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                val isVertical = settings.epubDirection == EpubDirection.VERTICAL
+                val webView = webViewInstance ?: return@collect
+                val js = getPageNavigationJs(
+                    isForward = isNext,
+                    isVertical = isVertical,
+                    stepExpr = volumeStepExpr
+                )
+                webView.evaluateJavascript(js) { res ->
+                    if (res?.trim() == "true") {
+                        if (isNext && currentIndex < chaptersCount - 1) {
+                            onNavigateChapter(currentIndex + 1, 0f)
+                        } else if (!isNext && currentIndex > 0) {
+                            onNavigateChapter(currentIndex - 1, 1f)
+                        }
                     }
                 }
             }
@@ -526,7 +626,7 @@ fun EpubContentView(
                     rt {
                         font-size: ${settings.epubRubySize}em$imp;
                         /* ルビ切り替え */
-                        display: ${if (settings.epubRubySize == 0.0f) "none" else "inline"}$imp;
+                        display: ${if (settings.epubRubySize == 0.0f) "none" else "ruby-text"}$imp;
                     }
                     ${if (settings.enableNightEyeStrainMode) {
                         """
@@ -596,6 +696,13 @@ fun EpubContentView(
                     isHorizontalScrollBarEnabled = true
                     isVerticalScrollBarEnabled = true
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                        val densityVal = resources.displayMetrics.density
+                        val w = (width / densityVal).toInt()
+                        val h = (height / densityVal).toInt()
+                        if (w > 0 && w != cssWidth) cssWidth = w
+                        if (h > 0 && h != cssHeight) cssHeight = h
+                    }
                 }
             },
             update = { webView ->
@@ -695,12 +802,8 @@ fun EpubContentView(
                         val x = e.x
                         val y = e.y
 
-                        val cssWidth = (viewWidth / density).toInt()
-                        val cssHeight = (viewHeight / density).toInt()
-
                         val isLeftTap = x < viewWidth * 0.25f
                         val isRightTap = x > viewWidth * 0.75f
-                        // メニュー表示のタップ判定は、画面の「真ん中の小さい範囲」のみ（横35%〜65%、縦30%〜70%）
                         val isCenterTap = x > viewWidth * 0.35f && x < viewWidth * 0.65f &&
                                           y > viewHeight * 0.30f && y < viewHeight * 0.70f
 
@@ -708,62 +811,68 @@ fun EpubContentView(
                             onToggleMenu()
                             return true
                         }
-                        if (settings.navAllowedInput == NavAllowedInput.SCROLL_ONLY) {
-                            return false
-                        }
-
                         if (isLeftTap) {
                             if (settings.epubDirection == EpubDirection.VERTICAL) {
-                                // 縦書き：左タップが「進む」（次のページ / 次の章）
-                                val js = """
-                                    (function(){
-                                        var oldX = window.scrollX || document.documentElement.scrollLeft;
-                                        window.scrollBy(-1, 0);
-                                        var newX = window.scrollX || document.documentElement.scrollLeft;
-                                        var atEdge = Math.abs(newX - oldX) < 0.5;
-                                        if (atEdge) {
-                                            return true;
-                                        } else {
-                                            if (${settings.navAllowedInput != NavAllowedInput.SCROLL_ONLY}) {
-                                                window.scrollBy(1 - $cssWidth, 0);
-                                            } else {
+                                if (settings.navAllowedInput == NavAllowedInput.SCROLL_ONLY) {
+                                    val checkJs = """
+                                        (function(){
+                                            var el = document.documentElement;
+                                            var oldX = window.scrollX || el.scrollLeft;
+                                            window.scrollBy(-1, 0);
+                                            var newX = window.scrollX || el.scrollLeft;
+                                            var atEdge = Math.abs(newX - oldX) < 0.5;
+                                            if (!atEdge) {
                                                 window.scrollBy(1, 0);
                                             }
-                                            return false;
+                                            return atEdge;
+                                        })()
+                                    """.trimIndent()
+                                    webView.evaluateJavascript(checkJs) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex < chaptersCount - 1) {
+                                                onNavigateChapter(currentIndex + 1, 0f)
+                                            }
                                         }
-                                    })()
-                                """.trimIndent()
-                                webView.evaluateJavascript(js) { res ->
-                                    if (res?.trim() == "true") {
-                                        if (currentIndex < chaptersCount - 1) {
-                                            onNavigateChapter(currentIndex + 1)
+                                    }
+                                } else {
+                                    val js = getPageNavigationJs(isForward = true, isVertical = true, stepExpr = tapStepExpr)
+                                    webView.evaluateJavascript(js) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex < chaptersCount - 1) {
+                                                onNavigateChapter(currentIndex + 1, 0f)
+                                            }
                                         }
                                     }
                                 }
                             } else {
-                                // 横書き：上タップが「戻る」（前のページ / 前の章）
-                                val js = """
-                                    (function(){
-                                        var oldY = window.scrollY || document.documentElement.scrollTop;
-                                        window.scrollBy(0, -1);
-                                        var newY = window.scrollY || document.documentElement.scrollTop;
-                                        var atEdge = Math.abs(newY - oldY) < 0.5;
-                                        if (atEdge) {
-                                            return true;
-                                        } else {
-                                            if (${settings.navAllowedInput != NavAllowedInput.SCROLL_ONLY}) {
-                                                window.scrollBy(0, 1 - $cssHeight);
-                                            } else {
+                                if (settings.navAllowedInput == NavAllowedInput.SCROLL_ONLY) {
+                                    val checkJs = """
+                                        (function(){
+                                            var el = document.documentElement;
+                                            var oldY = window.scrollY || el.scrollTop;
+                                            window.scrollBy(0, -1);
+                                            var newY = window.scrollY || el.scrollTop;
+                                            var atEdge = Math.abs(newY - oldY) < 0.5;
+                                            if (!atEdge) {
                                                 window.scrollBy(0, 1);
                                             }
-                                            return false;
+                                            return atEdge;
+                                        })()
+                                    """.trimIndent()
+                                    webView.evaluateJavascript(checkJs) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex > 0) {
+                                                onNavigateChapter(currentIndex - 1, 1f)
+                                            }
                                         }
-                                    })()
-                                """.trimIndent()
-                                webView.evaluateJavascript(js) { res ->
-                                    if (res?.trim() == "true") {
-                                        if (currentIndex > 0) {
-                                            onNavigateChapter(currentIndex - 1)
+                                    }
+                                } else {
+                                    val js = getPageNavigationJs(isForward = false, isVertical = false, stepExpr = tapStepExpr)
+                                    webView.evaluateJavascript(js) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex > 0) {
+                                                onNavigateChapter(currentIndex - 1, 1f)
+                                            }
                                         }
                                     }
                                 }
@@ -771,56 +880,66 @@ fun EpubContentView(
                             return true
                         } else if (isRightTap) {
                             if (settings.epubDirection == EpubDirection.VERTICAL) {
-                                // 縦書き：右タップが「戻る」（前のページ / 前の章）
-                                val js = """
-                                    (function(){
-                                        var oldX = window.scrollX || document.documentElement.scrollLeft;
-                                        window.scrollBy(1, 0);
-                                        var newX = window.scrollX || document.documentElement.scrollLeft;
-                                        var atEdge = Math.abs(newX - oldX) < 0.5;
-                                        if (atEdge) {
-                                            return true;
-                                        } else {
-                                            if (${settings.navAllowedInput != NavAllowedInput.SCROLL_ONLY}) {
-                                                window.scrollBy(-1 + $cssWidth, 0);
-                                            } else {
+                                if (settings.navAllowedInput == NavAllowedInput.SCROLL_ONLY) {
+                                    val checkJs = """
+                                        (function(){
+                                            var el = document.documentElement;
+                                            var oldX = window.scrollX || el.scrollLeft;
+                                            window.scrollBy(1, 0);
+                                            var newX = window.scrollX || el.scrollLeft;
+                                            var atEdge = Math.abs(newX - oldX) < 0.5;
+                                            if (!atEdge) {
                                                 window.scrollBy(-1, 0);
                                             }
-                                            return false;
+                                            return atEdge;
+                                        })()
+                                    """.trimIndent()
+                                    webView.evaluateJavascript(checkJs) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex > 0) {
+                                                onNavigateChapter(currentIndex - 1, 1f)
+                                            }
                                         }
-                                    })()
-                                """.trimIndent()
-                                webView.evaluateJavascript(js) { res ->
-                                    if (res?.trim() == "true") {
-                                        if (currentIndex > 0) {
-                                            onNavigateChapter(currentIndex - 1)
+                                    }
+                                } else {
+                                    val js = getPageNavigationJs(isForward = false, isVertical = true, stepExpr = tapStepExpr)
+                                    webView.evaluateJavascript(js) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex > 0) {
+                                                onNavigateChapter(currentIndex - 1, 1f)
+                                            }
                                         }
                                     }
                                 }
                             } else {
-                                // 横書き：下タップが「進む」（次のページ / 次の章）
-                                val js = """
-                                    (function(){
-                                        var oldY = window.scrollY || document.documentElement.scrollTop;
-                                        window.scrollBy(0, 1);
-                                        var newY = window.scrollY || document.documentElement.scrollTop;
-                                        var atEdge = Math.abs(newY - oldY) < 0.5;
-                                        if (atEdge) {
-                                            return true;
-                                        } else {
-                                            if (${settings.navAllowedInput != NavAllowedInput.SCROLL_ONLY}) {
-                                                window.scrollBy(0, -1 + $cssHeight);
-                                            } else {
+                                if (settings.navAllowedInput == NavAllowedInput.SCROLL_ONLY) {
+                                    val checkJs = """
+                                        (function(){
+                                            var el = document.documentElement;
+                                            var oldY = window.scrollY || el.scrollTop;
+                                            window.scrollBy(0, 1);
+                                            var newY = window.scrollY || el.scrollTop;
+                                            var atEdge = Math.abs(newY - oldY) < 0.5;
+                                            if (!atEdge) {
                                                 window.scrollBy(0, -1);
                                             }
-                                            return false;
+                                            return atEdge;
+                                        })()
+                                    """.trimIndent()
+                                    webView.evaluateJavascript(checkJs) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex < chaptersCount - 1) {
+                                                onNavigateChapter(currentIndex + 1, 0f)
+                                            }
                                         }
-                                    })()
-                                """.trimIndent()
-                                webView.evaluateJavascript(js) { res ->
-                                    if (res?.trim() == "true") {
-                                        if (currentIndex < chaptersCount - 1) {
-                                            onNavigateChapter(currentIndex + 1)
+                                    }
+                                } else {
+                                    val js = getPageNavigationJs(isForward = true, isVertical = false, stepExpr = tapStepExpr)
+                                    webView.evaluateJavascript(js) { res ->
+                                        if (res?.trim() == "true") {
+                                            if (currentIndex < chaptersCount - 1) {
+                                                onNavigateChapter(currentIndex + 1, 0f)
+                                            }
                                         }
                                     }
                                 }
@@ -832,13 +951,88 @@ fun EpubContentView(
                     }
                 })
 
-                webView.setOnTouchListener { _, event ->
+                webView.setOnTouchListener { v, event ->
                     detector.onTouchEvent(event)
-                    if (settings.navAllowedInput == NavAllowedInput.TAP_ONLY) {
-                        event.action == android.view.MotionEvent.ACTION_MOVE
-                    } else {
-                        false
+
+                    val isVertical = settings.epubDirection == EpubDirection.VERTICAL
+                    val isTapOnly = settings.navAllowedInput == NavAllowedInput.TAP_ONLY
+
+                    // タップのみモードの場合はスクロールをブロック
+                    if (isTapOnly) {
+                        return@setOnTouchListener event.action == android.view.MotionEvent.ACTION_MOVE
                     }
+
+                    when (event.action) {
+                        android.view.MotionEvent.ACTION_DOWN -> {
+                            startX = event.x
+                            startY = event.y
+                            isDragging = false
+                            pullDirection = 0
+                            pullAmount = 0f
+                            pullProgress = 0f
+                        }
+                        android.view.MotionEvent.ACTION_MOVE -> {
+                            val dx = event.x - startX
+                            val dy = event.y - startY
+                            val canScrollBack = if (isVertical) v.canScrollHorizontally(-1) else v.canScrollVertically(-1)
+                            val canScrollFwd = if (isVertical) v.canScrollHorizontally(1) else v.canScrollVertically(1)
+
+                            // コンテンツが端に達しているかどうかをチェック
+                            val draggingBack = if (isVertical) dx > 0 else dy > 0
+                            val draggingFwd = if (isVertical) dx < 0 else dy < 0
+
+                            // 縦スクロールと横スクロールの誤爆を防ぐため、ドミナント方向を判定
+                            val isCorrectDirection = if (isVertical) {
+                                kotlin.math.abs(dx) > kotlin.math.abs(dy) && kotlin.math.abs(dx) > 15f
+                            } else {
+                                kotlin.math.abs(dy) > kotlin.math.abs(dx) && kotlin.math.abs(dy) > 15f
+                            }
+
+                            if (isCorrectDirection) {
+                                if (draggingBack && !canScrollBack) {
+                                    val rawDist = if (isVertical) dx.coerceAtLeast(0f) else dy.coerceAtLeast(0f)
+                                    pullDirection = 1
+                                    pullAmount = rawDist
+                                    pullProgress = calculateProgress(rawDist)
+                                    isDragging = true
+                                } else if (draggingFwd && !canScrollFwd) {
+                                    val rawDist = if (isVertical) dx.coerceAtMost(0f) * -1f else dy.coerceAtMost(0f) * -1f
+                                    pullDirection = 2
+                                    pullAmount = rawDist
+                                    pullProgress = calculateProgress(rawDist)
+                                    isDragging = true
+                                } else {
+                                    pullDirection = 0
+                                    pullAmount = 0f
+                                    pullProgress = 0f
+                                    isDragging = false
+                                }
+                            } else {
+                                pullDirection = 0
+                                pullAmount = 0f
+                                pullProgress = 0f
+                                isDragging = false
+                            }
+                        }
+                        android.view.MotionEvent.ACTION_UP,
+                        android.view.MotionEvent.ACTION_CANCEL -> {
+                            if (isDragging && pullProgress >= 1f) {
+                                when (pullDirection) {
+                                    1 -> { // 前の章へ
+                                        if (currentIndex > 0) onNavigateChapter(currentIndex - 1, 1f)
+                                    }
+                                    2 -> { // 次の章へ
+                                        if (currentIndex < chaptersCount - 1) onNavigateChapter(currentIndex + 1, 0f)
+                                    }
+                                }
+                            }
+                            pullDirection = 0
+                            pullAmount = 0f
+                            pullProgress = 0f
+                            isDragging = false
+                        }
+                    }
+                    false
                 }
             },
             onRelease = { webView ->
@@ -921,9 +1115,53 @@ fun EpubContentView(
                             TextButton(
                                 onClick = {
                                     val pm = context.packageManager
-                                    val dictIntent = pm.getLaunchIntentForPackage("cc.namekuji.ebwin4") ?: pm.getLaunchIntentForPackage("org.aedict")
-                                    if (dictIntent != null) {
-                                        context.startActivity(dictIntent)
+                                    val dictPackage = listOf(
+                                        "info.ebstudio.ebpocket",
+                                        "info.ebstudio.ebpocketpro",
+                                        "sk.baka.aedict3",
+                                        "sk.baka.aedict"
+                                    ).firstOrNull { pkg ->
+                                        try {
+                                            pm.getPackageInfo(pkg, 0)
+                                            true
+                                        } catch (e: Exception) {
+                                            false
+                                        }
+                                    }
+                                    if (dictPackage != null) {
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            `package` = dictPackage
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, selectedText)
+                                        }
+                                        context.startActivity(intent)
+                                    } else {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=info.ebstudio.ebpocket"))
+                                        context.startActivity(intent)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                            ) {
+                                Text("辞書", fontSize = 10.sp)
+                            }
+                            TextButton(
+                                onClick = {
+                                    val pm = context.packageManager
+                                    val translatePkg = "com.google.android.apps.translate"
+                                    val isTranslateInstalled = try {
+                                        pm.getPackageInfo(translatePkg, 0)
+                                        true
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                    if (isTranslateInstalled) {
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            `package` = translatePkg
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, selectedText)
+                                        }
+                                        context.startActivity(intent)
                                     } else {
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://translate.google.com/?sl=auto&tl=ja&text=${java.net.URLEncoder.encode(selectedText, "UTF-8")}&op=translate"))
                                         context.startActivity(intent)
@@ -932,7 +1170,7 @@ fun EpubContentView(
                                 modifier = Modifier.weight(1f),
                                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                             ) {
-                                Text("辞書/翻訳", fontSize = 10.sp)
+                                Text("翻訳", fontSize = 10.sp)
                             }
                         }
                     }
@@ -1051,6 +1289,135 @@ fun EpubContentView(
                 }
             }
         }
+
+        // オーバースクロール・章遷移インジケーター
+        if (pullDirection != 0) {
+            val isVertical = settings.epubDirection == EpubDirection.VERTICAL
+            val alignment = when {
+                isVertical && pullDirection == 1 -> Alignment.CenterStart
+                isVertical && pullDirection == 2 -> Alignment.CenterEnd
+                !isVertical && pullDirection == 1 -> Alignment.TopCenter
+                else -> Alignment.BottomCenter
+            }
+            val label = if (pullDirection == 1) "前の章" else "次の章"
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = alignment
+            ) {
+                OverscrollChapterIndicator(
+                    progress = pullProgress,
+                    label = label,
+                    isVertical = isVertical,
+                    isForward = pullDirection == 2
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun OverscrollChapterIndicator(
+    progress: Float,
+    label: String,
+    isVertical: Boolean,
+    isForward: Boolean
+) {
+    val density = LocalDensity.current
+    val isComplete = progress >= 1f
+
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (isComplete) 180f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "arrowRotation"
+    )
+    val bgAlpha by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f) * 0.85f,
+        animationSpec = tween(80),
+        label = "bgAlpha"
+    )
+
+    val padding = if (isVertical) {
+        if (isForward) PaddingValues(end = 16.dp) else PaddingValues(start = 16.dp)
+    } else {
+        if (isForward) PaddingValues(bottom = 16.dp) else PaddingValues(top = 16.dp)
+    }
+
+    Box(
+        modifier = Modifier.padding(padding),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = androidx.compose.foundation.shape.CircleShape,
+            color = Color.Black.copy(alpha = bgAlpha),
+            modifier = Modifier.size(72.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                // 円弧プログレス
+                androidx.compose.foundation.Canvas(modifier = Modifier.size(64.dp)) {
+                    val strokeWidth = with(density) { 3.dp.toPx() }
+                    val sweepAngle = progress * 360f
+
+                    drawArc(
+                        color = if (isComplete) Color(0xFFE4E4E7) else Color(0xFF888888),
+                        startAngle = -90f,
+                        sweepAngle = sweepAngle,
+                        useCenter = false,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = strokeWidth,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    )
+                    // 背景トラック
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.15f),
+                        startAngle = -90f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = strokeWidth
+                        )
+                    )
+                }
+
+                // 矢印アイコン（完了で180°回転）
+                val arrowIcon = if (isVertical) {
+                    if (isForward) Icons.Default.KeyboardArrowLeft else Icons.Default.KeyboardArrowRight
+                } else {
+                    if (isForward) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp
+                }
+                Icon(
+                    imageVector = arrowIcon,
+                    contentDescription = label,
+                    tint = (if (isComplete) Color(0xFFE4E4E7) else Color(0xFFAAAAAA)).copy(alpha = progress.coerceIn(0f, 1f)),
+                    modifier = Modifier
+                        .size(28.dp)
+                        .rotate(arrowRotation)
+                )
+            }
+        }
+
+        // ラベル
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = bgAlpha),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .align(
+                    if (isVertical) {
+                        if (isForward) Alignment.CenterEnd else Alignment.CenterStart
+                    } else {
+                        if (isForward) Alignment.BottomCenter else Alignment.TopCenter
+                    }
+                )
+                .padding(
+                    if (isVertical) {
+                        if (isForward) PaddingValues(start = 80.dp) else PaddingValues(end = 80.dp)
+                    } else {
+                        if (isForward) PaddingValues(top = 80.dp) else PaddingValues(bottom = 80.dp)
+                    }
+                )
+        )
     }
 }
 
@@ -1418,29 +1785,31 @@ fun TopQuickMenu(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 常に半透明黒背景 + 白アイコン・テキストで視認性を保証
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.75f))
+            .background(Color(0xFF131315).copy(alpha = 0.95f))
+            .border(BorderStroke(1.dp, Color(0xFF27272A)))
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .statusBarsPadding()
-                .padding(8.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .fillMaxWidth()
         ) {
-            IconButton(onClick = onBack) {
-                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "戻る", tint = Color.White)
+            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "戻る", tint = Color(0xFFE4E4E7), modifier = Modifier.size(18.dp))
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = title,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = Color.White
+                color = Color(0xFFE4E4E7),
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -1453,7 +1822,7 @@ fun BottomQuickMenu(
     currentBook: Book,
     epubChapters: List<EpubChapter>?,
     onSettingsChanged: (AppSettings) -> Unit,
-    onChapterSelected: (Int) -> Unit,
+    onChapterSelected: (Int, Float) -> Unit,
     onOpenToc: () -> Unit,
     onOpenSettings: () -> Unit,
     onRsvpClick: () -> Unit,
@@ -1462,174 +1831,498 @@ fun BottomQuickMenu(
 ) {
     val context = LocalContext.current
 
-    // 常に半透明黒背景 + 白アイコンで視認性を保証
+    val activeTiles = remember(settings.quickMenuTiles) {
+        try {
+            val json = org.json.JSONArray(settings.quickMenuTiles)
+            (0 until json.length()).mapNotNull { i ->
+                try { QuickMenuTile.valueOf(json.getString(i)) } catch (_: Exception) { null }
+            }
+        } catch (_: Exception) {
+            listOf(QuickMenuTile.SETTINGS, QuickMenuTile.TOC, QuickMenuTile.AUTO_SCROLL, QuickMenuTile.RSVP)
+        }
+    }
+
+    // Dynamically calculate columns based on row count
+    val cols = remember(activeTiles.size, settings.quickMenuRows) {
+        val calculated = Math.ceil(activeTiles.size.toDouble() / settings.quickMenuRows.toDouble()).toInt()
+        calculated.coerceIn(1, 6)
+    }
+
+    // ── Media Session Sync State & Polling ──
+    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+    val mediaSessionManager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+    val componentName = android.content.ComponentName(context, cc.namekuji.tumugi.service.TumugiMediaListenerService::class.java)
+
+    var hasNotificationAccess by remember {
+        mutableStateOf(
+            android.provider.Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) == true
+        )
+    }
+
+    var trackTitle by remember { mutableStateOf<String?>(null) }
+    var trackArtist by remember { mutableStateOf<String?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var trackDuration by remember { mutableStateOf(0L) }
+    var trackPosition by remember { mutableStateOf(0L) }
+    var isShuffleOn by remember { mutableStateOf(false) }
+    var isRepeatOn by remember { mutableStateOf(false) }
+    var albumArtBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var activeController by remember { mutableStateOf<MediaController?>(null) }
+
+    LaunchedEffect(hasNotificationAccess) {
+        if (hasNotificationAccess && mediaSessionManager != null) {
+            while (true) {
+                try {
+                    val controllers = mediaSessionManager.getActiveSessions(componentName)
+                    val controller = controllers.firstOrNull()
+                    if (controller != activeController) {
+                        activeController = controller
+                    }
+
+                    controller?.let { c ->
+                        trackTitle = c.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                        trackArtist = c.metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                        trackDuration = c.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+
+                        val state = c.playbackState
+                        isPlaying = state?.state == PlaybackState.STATE_PLAYING
+                        trackPosition = state?.position ?: 0L
+
+                        isShuffleOn = try {
+                            val getShuffle = c::class.java.getMethod("getShuffleMode")
+                            (getShuffle.invoke(c) as? Int ?: 0) != 0
+                        } catch (_: Exception) {
+                            false
+                        }
+
+                        isRepeatOn = try {
+                            val getRepeat = c::class.java.getMethod("getRepeatMode")
+                            (getRepeat.invoke(c) as? Int ?: 0) != 0
+                        } catch (_: Exception) {
+                            false
+                        }
+
+                        albumArtBitmap = c.metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                            ?: c.metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                    } ?: run {
+                        activeController = null
+                        trackTitle = null
+                        trackArtist = null
+                        isPlaying = false
+                        trackDuration = 0L
+                        trackPosition = 0L
+                        isShuffleOn = false
+                        isRepeatOn = false
+                        albumArtBitmap = null
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
+    fun formatTime(ms: Long): String {
+        if (ms <= 0L) return "00:00"
+        val seconds = (ms / 1000) % 60
+        val minutes = (ms / (1000 * 60)) % 60
+        return String.format("%02d:%02d", minutes, seconds)
+    }
+
     Box(
         modifier = modifier
+            .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
+            .widthIn(max = 480.dp)
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.80f))
+            .background(Color(0xFF18181B).copy(alpha = 0.92f), shape = RoundedCornerShape(12.dp))
+            .border(BorderStroke(1.dp, Color(0xFF27272A)), shape = RoundedCornerShape(12.dp))
+            .padding(12.dp)
     ) {
         Column(
-            modifier = Modifier
-                .navigationBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // ── 前後話ナビゲーション ──
+            // Progress Row: Chapter / Page Counter
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val current = currentBook.currentChapterIndex
+                val total = currentBook.totalChapters
+                val activeChapterName = epubChapters?.getOrNull(current)?.title ?: "第 ${current + 1} 話"
+                Text(
+                    text = activeChapterName,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(0.7f)
+                )
+                Text(
+                    text = "${current + 1} / ${total}",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(0.3f),
+                    textAlign = TextAlign.End
+                )
+            }
+
+            // Progress Track
+            val total = currentBook.totalChapters
+            val current = currentBook.currentChapterIndex
+            val progressFraction = if (total > 0) current.toFloat() / total.toFloat() else 0f
+            LinearProgressIndicator(
+                progress = { progressFraction },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp, horizontal = 16.dp)
-            ) {
-                val total = currentBook.totalChapters
-                val current = currentBook.currentChapterIndex
-                val isVertical = settings.epubDirection == EpubDirection.VERTICAL
+                    .height(3.dp)
+                    .clip(MaterialTheme.shapes.extraSmall),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.outline
+            )
 
-                // 左側のナビゲーション
-                if (isVertical) {
-                    if (current < total - 1) {
-                        TextButton(
-                            onClick = { onChapterSelected(current + 1) },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                        ) { Text("<< 次話へ", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                    } else { Spacer(modifier = Modifier.width(80.dp)) }
-                } else {
-                    if (current > 0) {
-                        TextButton(
-                            onClick = { onChapterSelected(current - 1) },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                        ) { Text("<< 前話へ", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                    } else { Spacer(modifier = Modifier.width(80.dp)) }
+            // Spacer/Divider
+            HorizontalDivider(color = Color(0xFF27272A).copy(alpha = 0.5f), thickness = 1.dp)
+
+            // Chapter Navigator Row
+            val isVertical = settings.epubDirection == EpubDirection.VERTICAL
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left navigation button
+                val leftClick = {
+                    if (isVertical) {
+                        if (current < total - 1) onChapterSelected(current + 1, 0f)
+                    } else {
+                        if (current > 0) onChapterSelected(current - 1, 1f)
+                    }
+                }
+                val leftEnabled = if (isVertical) current < total - 1 else current > 0
+                val leftDesc = if (isVertical) "次話へ" else "前話へ"
+
+                IconButton(
+                    onClick = leftClick,
+                    enabled = leftEnabled,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = leftDesc,
+                        tint = if (leftEnabled) Color.White else Color.White.copy(alpha = 0.3f),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
 
+                // Center Chapter Indicator (TOC & Settings buttons removed)
                 Text(
-                    text = "第 ${current + 1} 話 / 全 ${total} 話",
-                    fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White
+                    text = "Chapter ${current + 1} of ${total}",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
 
-                if (isVertical) {
-                    if (current > 0) {
-                        TextButton(
-                            onClick = { onChapterSelected(current - 1) },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                        ) { Text("前話へ >>", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                    } else { Spacer(modifier = Modifier.width(80.dp)) }
-                } else {
-                    if (current < total - 1) {
-                        TextButton(
-                            onClick = { onChapterSelected(current + 1) },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                        ) { Text("次話へ >>", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                    } else { Spacer(modifier = Modifier.width(80.dp)) }
+                // Right navigation button
+                val rightClick = {
+                    if (isVertical) {
+                        if (current > 0) onChapterSelected(current - 1, 1f)
+                    } else {
+                        if (current < total - 1) onChapterSelected(current + 1, 0f)
+                    }
+                }
+                val rightEnabled = if (isVertical) current > 0 else current < total - 1
+                val rightDesc = if (isVertical) "前話へ" else "次話へ"
+
+                IconButton(
+                    onClick = rightClick,
+                    enabled = rightEnabled,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = rightDesc,
+                        tint = if (rightEnabled) Color.White else Color.White.copy(alpha = 0.3f),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
-            // ── 音楽プレイヤーの制御バー ──
+            // Dynamic tiles if configured
+            if (activeTiles.isNotEmpty()) {
+                HorizontalDivider(color = Color(0xFF27272A).copy(alpha = 0.5f), thickness = 1.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    activeTiles.chunked(cols).forEach { rowTiles ->
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            rowTiles.forEach { tile ->
+                                QuickMenuTileView(
+                                    tile = tile,
+                                    settings = settings,
+                                    currentBook = currentBook,
+                                    hasChapters = !epubChapters.isNullOrEmpty(),
+                                    onSettingsChanged = onSettingsChanged,
+                                    onOpenSettings = onOpenSettings,
+                                    onOpenToc = onOpenToc,
+                                    onRsvpClick = onRsvpClick,
+                                    onBrightnessClick = onBrightnessClick,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            repeat(cols - rowTiles.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Music controls (upgraded with metadata and session sync)
             if (settings.enableMusicControls) {
-                val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
-                
-                Surface(
-                    color = Color.White.copy(alpha = 0.08f),
-                    shape = RectangleShape,
+                HorizontalDivider(color = Color(0xFF27272A).copy(alpha = 0.5f), thickness = 1.dp)
+
+                if (!hasNotificationAccess) {
+                    // Prompt to grant notification access
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Enable Media Sync (requires access)",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(
+                            onClick = {
+                                try {
+                                    context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                                    hasNotificationAccess = true
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(24.dp)
+                        ) {
+                            Text("Grant", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Media display column
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // Track Info Row
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        IconButton(
-                            onClick = {
-                                audioManager?.dispatchMediaKeyEvent(
-                                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-                                )
-                                audioManager?.dispatchMediaKeyEvent(
-                                    android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-                                )
-                            }
-                        ) {
-                            Icon(imageVector = Icons.Default.SkipPrevious, contentDescription = "前曲", tint = Color.White)
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        IconButton(
-                            onClick = {
-                                audioManager?.dispatchMediaKeyEvent(
-                                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-                                )
-                                audioManager?.dispatchMediaKeyEvent(
-                                    android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-                                )
-                            }
-                        ) {
-                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "再生・一時停止", tint = Color.White)
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        IconButton(
-                            onClick = {
-                                audioManager?.dispatchMediaKeyEvent(
-                                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
-                                )
-                                audioManager?.dispatchMediaKeyEvent(
-                                    android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+                        // Cover art box
+                        if (albumArtBitmap != null) {
+                            Image(
+                                bitmap = albumArtBitmap!!.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color.DarkGray)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color.White.copy(alpha = 0.05f))
+                                    .border(BorderStroke(1.dp, Color(0xFF27272A)), RoundedCornerShape(4.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
-                        ) {
-                            Icon(imageVector = Icons.Default.SkipNext, contentDescription = "次曲", tint = Color.White)
                         }
-                    }
-                }
-            }
 
-            // ── 動的タイルグリッド ──
-            val activeTiles = remember(settings.quickMenuTiles) {
-                try {
-                    val json = org.json.JSONArray(settings.quickMenuTiles)
-                    (0 until json.length()).mapNotNull { i ->
-                        try { QuickMenuTile.valueOf(json.getString(i)) } catch (_: Exception) { null }
-                    }
-                } catch (_: Exception) {
-                    listOf(QuickMenuTile.SETTINGS, QuickMenuTile.TOC, QuickMenuTile.AUTO_SCROLL, QuickMenuTile.RSVP)
-                }
-            }
-            val columns = settings.quickMenuColumns.coerceIn(1, 6)
+                        Spacer(modifier = Modifier.width(8.dp))
 
-            // チャンクに分けてRowを作成
-            activeTiles.chunked(columns).forEach { rowTiles ->
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    rowTiles.forEach { tile ->
-                        QuickMenuTileView(
-                            tile = tile,
-                            settings = settings,
-                            currentBook = currentBook,
-                            hasChapters = !epubChapters.isNullOrEmpty(),
-                            onSettingsChanged = onSettingsChanged,
-                            onOpenSettings = onOpenSettings,
-                            onOpenToc = onOpenToc,
-                            onRsvpClick = onRsvpClick,
-                            onBrightnessClick = onBrightnessClick,
-                            modifier = Modifier.weight(1f)
+                        // Text Title/Artist
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = trackTitle ?: "No Music Playing",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = trackArtist ?: "Inactive",
+                                fontSize = 9.sp,
+                                color = Color.White.copy(alpha = 0.6f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Timestamps
+                        Text(
+                            text = "${formatTime(trackPosition)} / ${formatTime(trackDuration)}",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.White.copy(alpha = 0.6f)
                         )
                     }
-                    // 最終行の残りスペースを埋める
-                    repeat(columns - rowTiles.size) {
-                        Spacer(modifier = Modifier.weight(1f))
+
+                    // Progress slider
+                    if (trackDuration > 0L) {
+                        val fraction = (trackPosition.toFloat() / trackDuration.toFloat()).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(1.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = Color.White.copy(alpha = 0.1f)
+                        )
+                    }
+
+                    // Media Action Buttons
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Shuffle Mode Toggle
+                        IconButton(
+                            onClick = {
+                                activeController?.let { c ->
+                                    val target = if (isShuffleOn) 0 else 1
+                                    try {
+                                        val method = c.transportControls::class.java.getMethod("setShuffleMode", Int::class.javaPrimitiveType)
+                                        method.invoke(c.transportControls, target)
+                                        isShuffleOn = !isShuffleOn
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            },
+                            enabled = activeController != null,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Shuffle,
+                                contentDescription = "シャッフル",
+                                tint = if (isShuffleOn) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = if (activeController != null) 0.5f else 0.15f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
+                        // Prev
+                        IconButton(
+                            onClick = {
+                                activeController?.transportControls?.skipToPrevious() ?: run {
+                                    audioManager?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS))
+                                    audioManager?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS))
+                                }
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipPrevious,
+                                contentDescription = "前曲",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        // Play / Pause Toggle
+                        IconButton(
+                            onClick = {
+                                activeController?.let { c ->
+                                    if (isPlaying) c.transportControls.pause() else c.transportControls.play()
+                                } ?: run {
+                                    audioManager?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+                                    audioManager?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+                                }
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = "再生切替",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Next
+                        IconButton(
+                            onClick = {
+                                activeController?.transportControls?.skipToNext() ?: run {
+                                    audioManager?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_NEXT))
+                                    audioManager?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_NEXT))
+                                }
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "次曲",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        // Repeat Mode Toggle
+                        IconButton(
+                            onClick = {
+                                activeController?.let { c ->
+                                    val target = if (isRepeatOn) 0 else 2
+                                    try {
+                                        val method = c.transportControls::class.java.getMethod("setRepeatMode", Int::class.javaPrimitiveType)
+                                        method.invoke(c.transportControls, target)
+                                        isRepeatOn = !isRepeatOn
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            },
+                            enabled = activeController != null,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Repeat,
+                                contentDescription = "リピート",
+                                tint = if (isRepeatOn) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = if (activeController != null) 0.5f else 0.15f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
-
-// ─────────────────────────────────────
+}// ─────────────────────────────────────
 // クイックメニュータイル定義
 // ─────────────────────────────────────
 enum class QuickMenuTile(val label: String, val iconDefault: androidx.compose.ui.graphics.vector.ImageVector) {
@@ -2373,6 +3066,37 @@ fun RsvpDialog(
             }
         }
     }
+    // RSVP中はリフレッシュレートを最高値に設定
+    DisposableEffect(Unit) {
+        val activity = context as? android.app.Activity
+        activity?.let { act ->
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                val window = act.window
+                val params = window.attributes
+                val originalModeId = params.preferredDisplayModeId
+                val modes = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    act.display?.supportedModes
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.windowManager.defaultDisplay.supportedModes
+                }
+                val highestMode = modes?.maxByOrNull { it.refreshRate }
+                if (highestMode != null && highestMode.modeId != originalModeId) {
+                    params.preferredDisplayModeId = highestMode.modeId
+                    window.attributes = params
+                }
+                onDispose {
+                    val restoreParams = window.attributes
+                    if (restoreParams.preferredDisplayModeId != originalModeId) {
+                        restoreParams.preferredDisplayModeId = originalModeId
+                        window.attributes = restoreParams
+                    }
+                }
+            } else {
+                onDispose {}
+            }
+        } ?: onDispose {}
+    }
 
     val words = remember(htmlContent) {
         val cleanText = htmlContent.replace(Regex("<[^>]*>"), "")
@@ -2541,7 +3265,7 @@ fun BrightnessDialog(
     onDismiss: () -> Unit
 ) {
     var brightness by remember { mutableStateOf(if (settings.brightnessValue >= 0f) settings.brightnessValue else 0.5f) }
-    var isAutoBrightness by remember { mutableStateOf(settings.brightnessValue < 0f) }
+    var forceBrightness by remember { mutableStateOf(settings.brightnessValue >= 0f) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2555,21 +3279,21 @@ fun BrightnessDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("システム自動輝度", modifier = Modifier.weight(1f))
+                    Text("画面輝度の強制", modifier = Modifier.weight(1f))
                     Switch(
-                        checked = isAutoBrightness,
-                        onCheckedChange = { auto ->
-                            isAutoBrightness = auto
-                            if (auto) {
-                                onSettingsChanged(settings.copy(brightnessValue = -1f))
-                            } else {
+                        checked = forceBrightness,
+                        onCheckedChange = { force ->
+                            forceBrightness = force
+                            if (force) {
                                 onSettingsChanged(settings.copy(brightnessValue = brightness))
+                            } else {
+                                onSettingsChanged(settings.copy(brightnessValue = -1f))
                             }
                         }
                     )
                 }
 
-                if (!isAutoBrightness) {
+                if (forceBrightness) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2598,3 +3322,76 @@ fun BrightnessDialog(
         shape = RectangleShape
     )
 }
+
+fun getPageNavigationJs(isForward: Boolean, isVertical: Boolean, stepExpr: String): String {
+    return if (isVertical) {
+        if (isForward) {
+            """
+                (function(){
+                    var oldX = window.scrollX || document.documentElement.scrollLeft;
+                    window.scrollBy(-1, 0);
+                    var newX = window.scrollX || document.documentElement.scrollLeft;
+                    var atEdge = Math.abs(newX - oldX) < 0.5;
+                    if (atEdge) {
+                        return true;
+                    } else {
+                        var step = $stepExpr;
+                        window.scrollBy(1 - step, 0);
+                        return false;
+                    }
+                })()
+            """.trimIndent()
+        } else {
+            """
+                (function(){
+                    var oldX = window.scrollX || document.documentElement.scrollLeft;
+                    window.scrollBy(1, 0);
+                    var newX = window.scrollX || document.documentElement.scrollLeft;
+                    var atEdge = Math.abs(newX - oldX) < 0.5;
+                    if (atEdge) {
+                        return true;
+                    } else {
+                        var step = $stepExpr;
+                        window.scrollBy(step - 1, 0);
+                        return false;
+                    }
+                })()
+            """.trimIndent()
+        }
+    } else {
+        if (isForward) {
+            """
+                (function(){
+                    var oldY = window.scrollY || document.documentElement.scrollTop;
+                    window.scrollBy(0, 1);
+                    var newY = window.scrollY || document.documentElement.scrollTop;
+                    var atEdge = Math.abs(newY - oldY) < 0.5;
+                    if (atEdge) {
+                        return true;
+                    } else {
+                        var step = $stepExpr;
+                        window.scrollBy(0, step - 1);
+                        return false;
+                    }
+                })()
+            """.trimIndent()
+        } else {
+            """
+                (function(){
+                    var oldY = window.scrollY || document.documentElement.scrollTop;
+                    window.scrollBy(0, -1);
+                    var newY = window.scrollY || document.documentElement.scrollTop;
+                    var atEdge = Math.abs(newY - oldY) < 0.5;
+                    if (atEdge) {
+                        return true;
+                    } else {
+                        var step = $stepExpr;
+                        window.scrollBy(0, 1 - step);
+                        return false;
+                    }
+                })()
+            """.trimIndent()
+        }
+    }
+}
+

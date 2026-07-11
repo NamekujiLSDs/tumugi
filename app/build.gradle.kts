@@ -80,6 +80,7 @@ dependencies {
 
     // WebView for EPUB rendering
     implementation("androidx.webkit:webkit:1.10.0")
+    implementation("androidx.media:media:1.7.0")
 
     // DocumentFile for folder scanning
     implementation("androidx.documentfile:documentfile:1.0.1")

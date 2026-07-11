@@ -19,12 +19,12 @@ import cc.namekuji.tumugi.data.ThemeMode
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 
-val SharpShapes = Shapes(
-    extraSmall = RoundedCornerShape(0.dp),
-    small = RoundedCornerShape(0.dp),
-    medium = RoundedCornerShape(0.dp),
-    large = RoundedCornerShape(0.dp),
-    extraLarge = RoundedCornerShape(0.dp)
+val SoftShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(4.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(8.dp),
+    extraLarge = RoundedCornerShape(12.dp)
 )
 
 fun isColorLight(color: Color): Boolean {
@@ -57,25 +57,26 @@ fun getCustomColorScheme(accentColorHex: String, isDark: Boolean, isBlack: Boole
 
     return if (isBlack) {
         darkColorScheme(
-            primary = primaryColor,
-            onPrimary = onPrimaryColor,
-            primaryContainer = primaryColor.copy(alpha = 0.15f),
-            onPrimaryContainer = primaryColor,
-            secondary = primaryColor.copy(alpha = 0.8f),
-            onSecondary = onPrimaryColor,
-            secondaryContainer = primaryColor.copy(alpha = 0.10f),
-            onSecondaryContainer = primaryColor,
-            tertiary = primaryColor.copy(alpha = 0.6f),
-            onTertiary = onPrimaryColor,
-            tertiaryContainer = primaryColor.copy(alpha = 0.05f),
-            onTertiaryContainer = primaryColor,
+            primary = Color(0xFFE4E4E7),
+            onPrimary = Color(0xFF18181B),
+            primaryContainer = Color(0xFFE2E2E2),
+            onPrimaryContainer = Color(0xFF636565),
+            secondary = Color(0xFFC6C6CF),
+            onSecondary = Color(0xFF2F3037),
+            secondaryContainer = Color(0xFF45464E),
+            onSecondaryContainer = Color(0xFFB4B4BD),
+            tertiary = Color(0xFFE4E4E7),
+            onTertiary = Color(0xFF303037),
+            tertiaryContainer = Color(0xFFE3E1EA),
+            onTertiaryContainer = Color(0xFF64646B),
             background = Color.Black,
-            onBackground = Color.White,
-            surface = Color.Black,
-            onSurface = Color.White,
-            surfaceVariant = Color(0xFF121212),
-            onSurfaceVariant = Color(0xFFCCCCCC),
-            outline = Color(0xFF424242),
+            onBackground = Color(0xFFE5E1E4),
+            surface = Color(0xFF09090B),
+            onSurface = Color(0xFFE5E1E4),
+            surfaceVariant = Color(0xFF131315),
+            onSurfaceVariant = Color(0xFFC4C7C8),
+            outline = Color(0xFF27272A),
+            outlineVariant = Color(0xFF444748),
             error = Color(0xFFFFB4AB),
             onError = Color(0xFF690005),
             errorContainer = Color(0xFF93000A),
@@ -83,25 +84,26 @@ fun getCustomColorScheme(accentColorHex: String, isDark: Boolean, isBlack: Boole
         )
     } else if (isDark) {
         darkColorScheme(
-            primary = primaryColor,
-            onPrimary = onPrimaryColor,
-            primaryContainer = primaryColor.copy(alpha = 0.15f),
-            onPrimaryContainer = primaryColor,
-            secondary = primaryColor.copy(alpha = 0.8f),
-            onSecondary = onPrimaryColor,
-            secondaryContainer = primaryColor.copy(alpha = 0.10f),
-            onSecondaryContainer = primaryColor,
-            tertiary = primaryColor.copy(alpha = 0.6f),
-            onTertiary = onPrimaryColor,
-            tertiaryContainer = primaryColor.copy(alpha = 0.05f),
-            onTertiaryContainer = primaryColor,
-            background = Color(0xFF121212),
-            onBackground = Color(0xFFECEFF1),
-            surface = Color(0xFF1E1E1E),
-            onSurface = Color(0xFFECEFF1),
-            surfaceVariant = Color(0xFF2C2C2C),
-            onSurfaceVariant = Color(0xFFB0BEC5),
-            outline = Color(0xFF37474F),
+            primary = Color(0xFFE4E4E7),
+            onPrimary = Color(0xFF18181B),
+            primaryContainer = Color(0xFFE2E2E2),
+            onPrimaryContainer = Color(0xFF636565),
+            secondary = Color(0xFFC6C6CF),
+            onSecondary = Color(0xFF2F3037),
+            secondaryContainer = Color(0xFF45464E),
+            onSecondaryContainer = Color(0xFFB4B4BD),
+            tertiary = Color(0xFFE4E4E7),
+            onTertiary = Color(0xFF303037),
+            tertiaryContainer = Color(0xFFE3E1EA),
+            onTertiaryContainer = Color(0xFF64646B),
+            background = Color(0xFF09090B),
+            onBackground = Color(0xFFE5E1E4),
+            surface = Color(0xFF131315),
+            onSurface = Color(0xFFE5E1E4),
+            surfaceVariant = Color(0xFF18181B),
+            onSurfaceVariant = Color(0xFFC4C7C8),
+            outline = Color(0xFF27272A),
+            outlineVariant = Color(0xFF444748),
             error = Color(0xFFFFB4AB),
             onError = Color(0xFF690005),
             errorContainer = Color(0xFF93000A),
@@ -164,7 +166,7 @@ fun TumugiTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        shapes = SharpShapes,
+        shapes = SoftShapes,
         content = content
     )
 }

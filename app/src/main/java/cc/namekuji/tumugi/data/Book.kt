@@ -30,7 +30,8 @@ data class Book(
     val coverImagePath: String? = null,
     val encoding: String? = null,
     val directionOverride: String? = null,
-    val tags: String = ""
+    val tags: String = "",
+    val isFavorite: Boolean = false
 )
 
 class Converters {

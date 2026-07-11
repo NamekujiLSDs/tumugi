@@ -53,38 +53,33 @@ class SettingsViewModel(private val repository: BookRepository) : ViewModel() {
         }
     }
 
-    fun backupData(context: Context, uri: Uri, onComplete: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val success = try {
-                val json = repository.exportBackupJson()
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(json.toByteArray(Charsets.UTF_8))
-                }
-                true
-            } catch (e: Exception) {
-                e.printStackTrace()
-                false
+    suspend fun exportBackup(context: Context, uri: Uri): Boolean {
+        return try {
+            val json = repository.exportBackupJson()
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(json.toByteArray(Charsets.UTF_8))
             }
-            onComplete(success)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 
-    fun restoreData(context: Context, uri: Uri, onComplete: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val success = try {
-                val json = context.contentResolver.openInputStream(uri)?.use { ins ->
-                    ins.bufferedReader().use { it.readText() }
-                } ?: throw Exception("Read failed")
-                repository.importBackupJson(json)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                false
-            }
-            if (success) {
-                calculateCacheSize(context)
-            }
-            onComplete(success)
+    suspend fun importBackup(context: Context, uri: Uri): Boolean {
+        val success = try {
+            val json = context.contentResolver.openInputStream(uri)?.use { ins ->
+                ins.bufferedReader().use { it.readText() }
+            } ?: throw Exception("Read failed")
+            repository.importBackupJson(json)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
+        if (success) {
+            calculateCacheSize(context)
+        }
+        return success
     }
 
     private fun getFolderSize(file: File): Long {
