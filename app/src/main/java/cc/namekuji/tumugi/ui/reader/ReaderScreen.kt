@@ -2370,6 +2370,14 @@ fun TocFullScreenModal(
     onChapterSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(Unit) {
+        if (currentIndex in chapters.indices) {
+            listState.scrollToItem(index = currentIndex)
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = true)
@@ -2391,6 +2399,7 @@ fun TocFullScreenModal(
             modifier = Modifier.fillMaxSize()
         ) { padding ->
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(vertical = 8.dp),
                 modifier = Modifier.fillMaxSize().padding(padding)
             ) {

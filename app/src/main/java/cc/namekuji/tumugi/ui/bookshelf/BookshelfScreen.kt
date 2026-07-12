@@ -267,7 +267,7 @@ fun BookshelfScreen(
                                 }
                             }
                             if (!uiState.isFoldersCollapsed) {
-                                gridItems(uiState.folders, span = { GridItemSpan(maxLineSpan) }) { folder ->
+                                gridItems(uiState.folders, key = { it.id }, span = { GridItemSpan(maxLineSpan) }) { folder ->
                                     FolderStackItem(
                                         folder = folder,
                                         allBooks = uiState.allBooks,
@@ -305,7 +305,7 @@ fun BookshelfScreen(
                                 }
                             }
                             if (!uiState.isBooksCollapsed) {
-                                gridItems(uiState.books) { book ->
+                                gridItems(uiState.books, key = { it.id }) { book ->
                                     BookCardItem(
                                         book = book,
                                         onClick = { onBookClick(book.id) },
@@ -347,7 +347,7 @@ fun BookshelfScreen(
                                 }
                             }
                             if (!uiState.isFoldersCollapsed) {
-                                items(uiState.folders) { folder ->
+                                items(uiState.folders, key = { it.id }) { folder ->
                                     FolderStackItem(
                                         folder = folder,
                                         allBooks = uiState.allBooks,
@@ -385,7 +385,7 @@ fun BookshelfScreen(
                                 }
                             }
                             if (!uiState.isBooksCollapsed) {
-                                items(uiState.books) { book ->
+                                items(uiState.books, key = { it.id }) { book ->
                                     BookStackItem(
                                         book = book,
                                         onClick = { onBookClick(book.id) },
@@ -806,6 +806,17 @@ fun BookStackItem(
         book.currentChapterIndex.toFloat() / book.totalChapters.toFloat() else 0f
     val progressPercent = (progressFraction * 100).toInt()
 
+    var hasCover by remember(book.coverImagePath) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(book.coverImagePath) {
+        if (book.coverImagePath != null) {
+            hasCover = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                File(book.coverImagePath).exists()
+            }
+        } else {
+            hasCover = false
+        }
+    }
+
     Card(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -831,14 +842,14 @@ fun BookStackItem(
                     .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)), MaterialTheme.shapes.extraSmall),
                 contentAlignment = Alignment.Center
             ) {
-                if (book.coverImagePath != null && File(book.coverImagePath).exists()) {
+                if (hasCover == true && book.coverImagePath != null) {
                     AsyncImage(
                         model = File(book.coverImagePath),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                } else {
+                } else if (hasCover == false) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
@@ -858,6 +869,12 @@ fun BookStackItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
+                    )
                 }
             }
 
@@ -934,6 +951,17 @@ fun BookCardItem(
         book.currentChapterIndex.toFloat() / book.totalChapters.toFloat() else 0f
     val progressPercent = (progressFraction * 100).toInt()
 
+    var hasCover by remember(book.coverImagePath) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(book.coverImagePath) {
+        if (book.coverImagePath != null) {
+            hasCover = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                File(book.coverImagePath).exists()
+            }
+        } else {
+            hasCover = false
+        }
+    }
+
     Card(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -945,14 +973,14 @@ fun BookCardItem(
         shape = MaterialTheme.shapes.small
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (book.coverImagePath != null && File(book.coverImagePath).exists()) {
+            if (hasCover == true && book.coverImagePath != null) {
                 AsyncImage(
                     model = File(book.coverImagePath),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else {
+            } else if (hasCover == false) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -966,6 +994,12 @@ fun BookCardItem(
                         modifier = Modifier.size(36.dp)
                     )
                 }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface)
+                )
             }
 
             if (book.isFavorite) {

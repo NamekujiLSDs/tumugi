@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [Folder::class, Book::class, AppSettings::class, Bookmark::class],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 @TypeConverters(Converters::class, SettingsConverters::class)
@@ -211,6 +211,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // SQLite does not support DROP COLUMN directly.
+                // We keep the columns in SQLite but remove properties from AppSettings.
+                // An empty migration is sufficient to update the Room identity hash.
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -223,7 +231,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
                     MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
                     MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
-                    MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17
+                    MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18
                 )
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
