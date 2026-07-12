@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -40,6 +41,23 @@ class ReaderViewModel(
 
     val appSettings: StateFlow<AppSettings> = repository.appSettings
         .map { it ?: AppSettings() }
+        .distinctUntilChanged { old, new ->
+            old.copy(
+                statsReadingTimeToday = 0,
+                statsReadingTimeYesterday = 0,
+                statsReadingTimeCumulative = 0,
+                statsLastActiveDay = "",
+                statsReadCharacters = 0,
+                statsReadingTimeHistoryJson = ""
+            ) == new.copy(
+                statsReadingTimeToday = 0,
+                statsReadingTimeYesterday = 0,
+                statsReadingTimeCumulative = 0,
+                statsLastActiveDay = "",
+                statsReadCharacters = 0,
+                statsReadingTimeHistoryJson = ""
+            )
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
 
     private val _currentChapterContent = MutableStateFlow("")
