@@ -83,14 +83,14 @@ fun SettingsScreen(
 
     // Extract detected font files in font folders if EPUB is active
     val fontFiles = remember(settings?.epubFontFolderUri) {
-        val list = mutableListOf<String>()
+        val list = mutableListOf<Pair<String, String>>()
         val uriStr = settings?.epubFontFolderUri
         if (uriStr != null) {
             try {
                 val folder = DocumentFile.fromTreeUri(context, Uri.parse(uriStr))
                 folder?.listFiles()?.forEach { file ->
                     if (file.isFile && (file.name?.endsWith(".ttf", true) == true || file.name?.endsWith(".otf", true) == true)) {
-                        file.name?.let { list.add(it) }
+                        file.name?.let { name -> list.add(name to file.uri.toString()) }
                     }
                 }
             } catch (e: Exception) {
@@ -115,26 +115,6 @@ fun SettingsScreen(
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "フォントフォルダの登録に失敗しました", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    )
-
-    // SAF Font Single File Picker
-    val fontFileLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-        onResult = { uri ->
-            if (uri != null) {
-                try {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                    settings?.let {
-                        viewModel.updateSettings(it.copy(epubCustomFontUri = uri.toString()))
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "フォントの登録に失敗しました", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -302,6 +282,12 @@ fun SettingsScreen(
                             )
                         )
 
+                        SettingSwitchRow(
+                            title = "起動時に前回の読書位置を復元する",
+                            checked = currentSettings.enableResumeOnStart,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableResumeOnStart = it)) }
+                        )
+
                         HorizontalDivider()
 
                         SectionHeader(title = "お気に入りピン留め設定")
@@ -358,6 +344,26 @@ fun SettingsScreen(
                             )
                         )
 
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text(text = "読書画面の上部余白: ${currentSettings.readerTopMargin} dp", fontSize = 13.sp)
+                            Slider(
+                                value = currentSettings.readerTopMargin.toFloat(),
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(readerTopMargin = it.toInt())) },
+                                valueRange = 0f..120f,
+                                steps = 24
+                            )
+                        }
+
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text(text = "読書画面の下部余白: ${currentSettings.readerBottomMargin} dp", fontSize = 13.sp)
+                            Slider(
+                                value = currentSettings.readerBottomMargin.toFloat(),
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(readerBottomMargin = it.toInt())) },
+                                valueRange = 0f..120f,
+                                steps = 24
+                            )
+                        }
+
                         // 端末がサポートするリフレッシュレートを動的に取得
                         val supportedRefreshRates = remember {
                             val modes = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -391,6 +397,38 @@ fun SettingsScreen(
                                 }
                             }
                         )
+
+                        HorizontalDivider()
+
+                        SectionHeader(title = "輝度・フィルター設定")
+
+                        SettingSwitchRow(
+                            title = "明るさ設定を保存する (アプリ終了後も維持)",
+                            checked = currentSettings.restoreBrightness,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(restoreBrightness = it)) }
+                        )
+
+                        // Filters moved to format-specific categories
+
+                        SettingSwitchRow(
+                            title = "フルスクリーン時にステータス情報を表示",
+                            checked = currentSettings.showFullscreenStatus,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(showFullscreenStatus = it)) }
+                        )
+
+                        if (currentSettings.showFullscreenStatus) {
+                            DropdownSettingRow(
+                                title = "ステータス情報の表示位置",
+                                currentLabel = when (currentSettings.fullscreenStatusPosition) {
+                                    1 -> "下部"
+                                    else -> "上部"
+                                },
+                                options = listOf(
+                                    "上部" to { viewModel.updateSettings(currentSettings.copy(fullscreenStatusPosition = 0)) },
+                                    "下部" to { viewModel.updateSettings(currentSettings.copy(fullscreenStatusPosition = 1)) }
+                                )
+                            )
+                        }
 
                         HorizontalDivider()
 
@@ -748,6 +786,32 @@ fun SettingsScreen(
                         SectionHeader(title = "操作設定")
 
                         DropdownSettingRow(
+                            title = "操作入力の種類",
+                            currentLabel = when (currentSettings.navAllowedInput) {
+                                NavAllowedInput.SCROLL_ONLY -> "スクロールのみ"
+                                NavAllowedInput.TAP_ONLY -> "タップのみ"
+                                NavAllowedInput.BOTH -> "スクロール＋タップ"
+                            },
+                            options = listOf(
+                                "スクロール＋タップ" to { viewModel.updateSettings(currentSettings.copy(navAllowedInput = NavAllowedInput.BOTH)) },
+                                "スクロールのみ" to { viewModel.updateSettings(currentSettings.copy(navAllowedInput = NavAllowedInput.SCROLL_ONLY)) },
+                                "タップのみ" to { viewModel.updateSettings(currentSettings.copy(navAllowedInput = NavAllowedInput.TAP_ONLY)) }
+                            )
+                        )
+
+                        DropdownSettingRow(
+                            title = "ナビゲーションモード",
+                            currentLabel = when (currentSettings.navMode) {
+                                NavMode.PAGINATED -> "ページ送り (ページネーション)"
+                                NavMode.CONTINUOUS -> "連続スクロール"
+                            },
+                            options = listOf(
+                                "ページ送り (ページネーション)" to { viewModel.updateSettings(currentSettings.copy(navMode = NavMode.PAGINATED)) },
+                                "連続スクロール" to { viewModel.updateSettings(currentSettings.copy(navMode = NavMode.CONTINUOUS)) }
+                            )
+                        )
+
+                        DropdownSettingRow(
                             title = "読書画面のタップ判定",
                             currentLabel = when (currentSettings.tapZoneMapping) {
                                 1 -> "左右：[左]進む / [右]戻る"
@@ -786,6 +850,40 @@ fun SettingsScreen(
                             checked = currentSettings.enableEdgeProtect,
                             onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableEdgeProtect = it)) }
                         )
+
+                        SettingSwitchRow(
+                            title = "ページ遷移アニメーション",
+                            checked = currentSettings.enableAnimation,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableAnimation = it)) }
+                        )
+
+                        if (currentSettings.enableAnimation) {
+                            DropdownSettingRow(
+                                title = "アニメーションタイプ",
+                                currentLabel = when (currentSettings.animationType) {
+                                    AnimationType.SLIDE -> "スライド"
+                                    AnimationType.FADE -> "フェード"
+                                    AnimationType.CURL -> "めくり (カール)"
+                                    AnimationType.NONE -> "なし"
+                                },
+                                options = listOf(
+                                    "スライド" to { viewModel.updateSettings(currentSettings.copy(animationType = AnimationType.SLIDE)) },
+                                    "フェード" to { viewModel.updateSettings(currentSettings.copy(animationType = AnimationType.FADE)) },
+                                    "めくり (カール)" to { viewModel.updateSettings(currentSettings.copy(animationType = AnimationType.CURL)) },
+                                    "なし" to { viewModel.updateSettings(currentSettings.copy(animationType = AnimationType.NONE)) }
+                                )
+                            )
+                        }
+
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text(text = "オーバースクロール判定閾値: ${currentSettings.overscrollThreshold.toInt()} dp", fontSize = 13.sp)
+                            Slider(
+                                value = currentSettings.overscrollThreshold,
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(overscrollThreshold = it)) },
+                                valueRange = 20f..300f,
+                                steps = 14
+                            )
+                        }
 
                         SettingSwitchRow(
                             title = "音量ボタンによるページ移動",
@@ -846,6 +944,18 @@ fun SettingsScreen(
                             checked = currentSettings.enableMusicControls,
                             onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableMusicControls = it)) }
                         )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text(text = "パネルの余白サイズ: ${currentSettings.quickMenuPadding} dp", fontSize = 13.sp)
+                            Slider(
+                                value = currentSettings.quickMenuPadding.toFloat(),
+                                onValueChange = { viewModel.updateSettings(currentSettings.copy(quickMenuPadding = it.toInt())) },
+                                valueRange = 0f..32f,
+                                steps = 32
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -922,13 +1032,21 @@ fun SettingsScreen(
                             )
                         }
 
-                        Column {
-                            Text(text = "自動スクロール速度: ${currentSettings.autoScrollSpeed}", fontSize = 13.sp)
-                            Slider(
-                                value = currentSettings.autoScrollSpeed.toFloat(),
-                                onValueChange = { viewModel.updateSettings(currentSettings.copy(autoScrollSpeed = it.toInt())) },
-                                valueRange = 1f..20f, steps = 19
-                            )
+                        SettingSwitchRow(
+                            title = "自動スクロールを有効にする",
+                            checked = currentSettings.enableAutoScroll,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableAutoScroll = it)) }
+                        )
+
+                        if (currentSettings.enableAutoScroll) {
+                            Column {
+                                Text(text = "自動スクロール速度: ${currentSettings.autoScrollSpeed}", fontSize = 13.sp)
+                                Slider(
+                                    value = currentSettings.autoScrollSpeed.toFloat(),
+                                    onValueChange = { viewModel.updateSettings(currentSettings.copy(autoScrollSpeed = it.toInt())) },
+                                    valueRange = 1f..20f, steps = 19
+                                )
+                            }
                         }
 
                         DropdownSettingRow(
@@ -985,24 +1103,34 @@ fun SettingsScreen(
                             }
                         }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "カスタムフォント個別指定")
-                                if (currentSettings.epubCustomFontUri != null) {
-                                    Text(
-                                        text = "フォント指定済み",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.secondary
-                                    )
-                                } else {
-                                    Text(text = "未設定", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+                        // Folder Selection remains below
+
+                        if (fontFiles.isNotEmpty()) {
+                            DropdownSettingRow(
+                                title = "フォントフォルダから選択",
+                                currentLabel = fontFiles.find { it.second == currentSettings.epubCustomFontUri }?.first ?: "未選択 (デフォルト)",
+                                options = buildList {
+                                    add("未選択 (デフォルト)" to { viewModel.updateSettings(currentSettings.copy(epubCustomFontUri = null)) })
+                                    fontFiles.forEach { (name, uri) ->
+                                        add(name to { viewModel.updateSettings(currentSettings.copy(epubCustomFontUri = uri)) })
+                                    }
                                 }
-                            }
-                            Button(onClick = { fontFileLauncher.launch(arrayOf("font/ttf", "font/otf", "application/x-font-ttf", "application/x-font-otf")) }, shape = RectangleShape) {
-                                Text("ファイル選択")
+                            )
+                        }
+
+                        if (currentSettings.epubCustomFontUri != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = "カスタムフォントを解除する", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                                Button(
+                                    onClick = { viewModel.updateSettings(currentSettings.copy(epubCustomFontUri = null)) },
+                                    shape = RectangleShape,
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                ) {
+                                    Text("解除", color = Color.White)
+                                }
                             }
                         }
 
@@ -1068,6 +1196,75 @@ fun SettingsScreen(
                                 .height(120.dp),
                             textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                         )
+
+                        HorizontalDivider()
+
+                        SectionHeader(title = "RSVP (高速逐次表示) 設定")
+
+                        SettingSwitchRow(
+                            title = "RSVP (高速逐次表示) を有効にする",
+                            checked = currentSettings.enableRsvp,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(enableRsvp = it)) }
+                        )
+
+                        if (currentSettings.enableRsvp) {
+                            Column {
+                                Text(text = "RSVP 速度: ${currentSettings.rsvpSpeed} WPM", fontSize = 13.sp)
+                                Slider(
+                                    value = currentSettings.rsvpSpeed.toFloat(),
+                                    onValueChange = { viewModel.updateSettings(currentSettings.copy(rsvpSpeed = it.toInt())) },
+                                    valueRange = 100f..1000f, steps = 18
+                                )
+                            }
+
+                            Column {
+                                Text(text = "RSVP フォントサイズ: ${currentSettings.rsvpFontSize} sp", fontSize = 13.sp)
+                                Slider(
+                                    value = currentSettings.rsvpFontSize.toFloat(),
+                                    onValueChange = { viewModel.updateSettings(currentSettings.copy(rsvpFontSize = it.toInt())) },
+                                    valueRange = 16f..80f, steps = 16
+                                )
+                            }
+
+                            DropdownSettingRow(
+                                title = "RSVP 画面の向き",
+                                currentLabel = when (currentSettings.rsvpScreenOrientation) {
+                                    1 -> "横画面"
+                                    else -> "縦画面"
+                                },
+                                options = listOf(
+                                    "縦画面" to { viewModel.updateSettings(currentSettings.copy(rsvpScreenOrientation = 0)) },
+                                    "横画面" to { viewModel.updateSettings(currentSettings.copy(rsvpScreenOrientation = 1)) }
+                                )
+                            )
+                        }
+
+                        HorizontalDivider()
+
+                        SectionHeader(title = "EPUB 画面フィルター設定")
+
+                        SettingSwitchRow(
+                            title = "ブルーライトフィルター",
+                            checked = currentSettings.epubEnableBlueLightFilter,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(epubEnableBlueLightFilter = it)) }
+                        )
+
+                        if (currentSettings.epubEnableBlueLightFilter) {
+                            Column {
+                                Text(text = "フィルター強度: ${(currentSettings.epubBlueLightFilterOpacity * 100).toInt()} %", fontSize = 13.sp)
+                                Slider(
+                                    value = currentSettings.epubBlueLightFilterOpacity,
+                                    onValueChange = { viewModel.updateSettings(currentSettings.copy(epubBlueLightFilterOpacity = it)) },
+                                    valueRange = 0.05f..0.5f, steps = 9
+                                )
+                            }
+                        }
+
+                        SettingSwitchRow(
+                            title = "夜間・眼精疲労軽減モード",
+                            checked = currentSettings.epubEnableNightEyeStrainMode,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(epubEnableNightEyeStrainMode = it)) }
+                        )
                     }
 
                     SettingsCategory.CBZ -> {
@@ -1128,6 +1325,33 @@ fun SettingsScreen(
                             title = "破損ファイルや非画像ファイルをスキップ",
                             checked = currentSettings.cbzSkipCorrupted,
                             onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzSkipCorrupted = it)) }
+                        )
+
+                        HorizontalDivider()
+
+                        SectionHeader(title = "CBZ 画面フィルター設定")
+
+                        SettingSwitchRow(
+                            title = "ブルーライトフィルター",
+                            checked = currentSettings.cbzEnableBlueLightFilter,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzEnableBlueLightFilter = it)) }
+                        )
+
+                        if (currentSettings.cbzEnableBlueLightFilter) {
+                            Column {
+                                Text(text = "フィルター強度: ${(currentSettings.cbzBlueLightFilterOpacity * 100).toInt()} %", fontSize = 13.sp)
+                                Slider(
+                                    value = currentSettings.cbzBlueLightFilterOpacity,
+                                    onValueChange = { viewModel.updateSettings(currentSettings.copy(cbzBlueLightFilterOpacity = it)) },
+                                    valueRange = 0.05f..0.5f, steps = 9
+                                )
+                            }
+                        }
+
+                        SettingSwitchRow(
+                            title = "夜間・眼精疲労軽減モード",
+                            checked = currentSettings.cbzEnableNightEyeStrainMode,
+                            onCheckedChange = { viewModel.updateSettings(currentSettings.copy(cbzEnableNightEyeStrainMode = it)) }
                         )
                     }
 

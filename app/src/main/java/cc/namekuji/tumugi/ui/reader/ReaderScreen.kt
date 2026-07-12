@@ -11,6 +11,8 @@ import android.media.session.PlaybackState
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -177,6 +179,11 @@ fun ReaderScreen(
         }
     }
 
+    val isEpub = currentBook.formatType == BookFormat.EPUB
+    val currentNightMode = if (isEpub) settings.epubEnableNightEyeStrainMode else settings.cbzEnableNightEyeStrainMode
+    val currentBlueLightFilter = if (isEpub) settings.epubEnableBlueLightFilter else settings.cbzEnableBlueLightFilter
+    val currentBlueLightFilterOpacity = if (isEpub) settings.epubBlueLightFilterOpacity else settings.cbzBlueLightFilterOpacity
+
     val density = LocalDensity.current
     var containerHeightDp by remember { mutableStateOf(800) }
 
@@ -184,9 +191,9 @@ fun ReaderScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (settings.enableNightEyeStrainMode) {
+                if (currentNightMode) {
                     Color.Black
-                } else if (currentBook.formatType == BookFormat.EPUB) {
+                } else if (isEpub) {
                     Color(android.graphics.Color.parseColor(settings.epubBackgroundColor))
                 } else {
                     Color.Black
@@ -198,49 +205,65 @@ fun ReaderScreen(
                 }
             }
     ) {
-        // コンテンツ描画部
-        when (currentBook.formatType) {
-            BookFormat.EPUB -> {
-                EpubContentView(
-                    htmlContent = currentHtmlContent,
-                    settings = settings,
-                    currentIndex = currentBook.currentChapterIndex,
-                    chaptersCount = epubInfo?.chapters?.size ?: 0,
-                    scrollPosition = currentBook.scrollPosition,
-                    containerHeightDp = containerHeightDp,
-                    volumeKeyEventFlow = volumeKeyEventFlow,
-                    onProgressChanged = { index, scroll ->
-                        viewModel.updateProgress(index, scroll)
-                    },
-                    onToggleMenu = { viewModel.toggleMenu() },
-                    onNavigateChapter = { nextIndex, initialScroll ->
-                        viewModel.loadEpubChapter(nextIndex, initialScroll)
-                    },
-                    onAddMemoBookmark = { selectedText, note ->
-                        viewModel.addMemoBookmark(selectedText, note)
-                    },
-                    onSettingsChanged = { viewModel.updateSettings(it) }
-                )
-            }
-            BookFormat.CBZ -> {
-                val info = cbzInfo
-                if (info != null && info.imagePaths.isNotEmpty()) {
-                    CbzContentView(
-                        imagePaths = info.imagePaths,
+        // ── 上部・下部余白を適用するコンテナ ──
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = settings.readerTopMargin.dp, bottom = settings.readerBottomMargin.dp)
+        ) {
+            // コンテンツ描画部
+            when (currentBook.formatType) {
+                BookFormat.EPUB -> {
+                    EpubContentView(
+                        htmlContent = currentHtmlContent,
                         settings = settings,
                         currentIndex = currentBook.currentChapterIndex,
-                        directionOverride = currentBook.directionOverride,
-                        onProgressChanged = { index ->
-                            viewModel.updateProgress(index, 0.9f)
+                        chaptersCount = epubInfo?.chapters?.size ?: 0,
+                        scrollPosition = currentBook.scrollPosition,
+                        containerHeightDp = containerHeightDp,
+                        volumeKeyEventFlow = volumeKeyEventFlow,
+                        onProgressChanged = { index, scroll ->
+                            viewModel.updateProgress(index, scroll)
                         },
-                        onToggleMenu = { viewModel.toggleMenu() }
+                        onToggleMenu = { viewModel.toggleMenu() },
+                        onNavigateChapter = { nextIndex, initialScroll ->
+                            viewModel.loadEpubChapter(nextIndex, initialScroll)
+                        },
+                        onAddMemoBookmark = { selectedText, note ->
+                            viewModel.addMemoBookmark(selectedText, note)
+                        },
+                        onSettingsChanged = { viewModel.updateSettings(it) }
                     )
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("画像を読み込み中...", color = Color.White)
+                }
+                BookFormat.CBZ -> {
+                    val info = cbzInfo
+                    if (info != null && info.imagePaths.isNotEmpty()) {
+                        CbzContentView(
+                            imagePaths = info.imagePaths,
+                            settings = settings,
+                            currentIndex = currentBook.currentChapterIndex,
+                            directionOverride = currentBook.directionOverride,
+                            onProgressChanged = { index ->
+                                viewModel.updateProgress(index, 0.9f)
+                            },
+                            onToggleMenu = { viewModel.toggleMenu() }
+                        )
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("画像を読み込み中...", color = Color.White)
+                        }
                     }
                 }
             }
+        }
+
+        // ── ブルーライトフィルター & ペーパーテクスチャ オーバーレイ ──
+        if (currentBlueLightFilter) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF8F6B4A).copy(alpha = currentBlueLightFilterOpacity.coerceIn(0f, 1f)))
+            )
         }
 
         // メニュー表示時に、メニュー外部（画面の他の部分）へのタップを検知してメニューを閉じる透明レイヤー
@@ -492,9 +515,15 @@ fun EpubContentView(
         if (uriStr != null) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
+                    context.cacheDir.listFiles()?.forEach { file ->
+                        if (file.name.startsWith("active_reader_font_")) {
+                            file.delete()
+                        }
+                    }
                     val uri = Uri.parse(uriStr)
+                    val fontHash = uriStr.hashCode().toString()
                     val extension = if (uriStr.lowercase().endsWith(".otf")) "otf" else "ttf"
-                    val tempFile = java.io.File(context.cacheDir, "active_reader_font.$extension")
+                    val tempFile = java.io.File(context.cacheDir, "active_reader_font_${fontHash}.$extension")
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         tempFile.outputStream().use { output ->
                             input.copyTo(output)
@@ -526,7 +555,7 @@ fun EpubContentView(
         settings.epubRubySize,
         settings.epubCustomCss,
         settings.forceCssOverwrite,
-        settings.enableNightEyeStrainMode
+        settings.epubEnableNightEyeStrainMode
     ) {
         val webView = webViewInstance ?: return@LaunchedEffect
         isPageReady = false // 新しいページのロード開始時にローディングを回す
@@ -636,7 +665,7 @@ fun EpubContentView(
                     font-size: ${settings.epubRubySize}em$imp;
                     display: ${if (settings.epubRubySize == 0.0f) "none" else "ruby-text"}$imp;
                 }
-                ${if (settings.enableNightEyeStrainMode) "body, body * { background-color: #000000 !important; color: #FF3B30 !important; }" else ""}
+                ${if (settings.epubEnableNightEyeStrainMode) "body, body * { background-color: #000000 !important; color: #FF3B30 !important; }" else ""}
                 img {
                     max-width: 100%;
                     height: auto;
@@ -1782,7 +1811,7 @@ fun BottomQuickMenu(
             .fillMaxWidth()
             .background(Color(0xFF18181B).copy(alpha = 0.92f), shape = RoundedCornerShape(12.dp))
             .border(BorderStroke(1.dp, Color(0xFF27272A)), shape = RoundedCornerShape(12.dp))
-            .padding(12.dp)
+            .padding(settings.quickMenuPadding.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -2215,11 +2244,15 @@ fun QuickMenuTileView(
             settings.enableAutoScroll
         )
         QuickMenuTile.RSVP -> Triple(Icons.Default.FastForward, "RSVP速読", false)
-        QuickMenuTile.NIGHT_MODE -> Triple(
-            Icons.Default.Star,
-            if (settings.enableNightEyeStrainMode) "通常モード" else "夜間モード",
-            settings.enableNightEyeStrainMode
-        )
+        QuickMenuTile.NIGHT_MODE -> {
+            val isEpub = currentBook.formatType == BookFormat.EPUB
+            val currentNightMode = if (isEpub) settings.epubEnableNightEyeStrainMode else settings.cbzEnableNightEyeStrainMode
+            Triple(
+                Icons.Default.Star,
+                if (currentNightMode) "通常モード" else "夜間モード",
+                currentNightMode
+            )
+        }
         QuickMenuTile.BOOKMARK -> Triple(Icons.Default.Bookmark, "しおり", false)
         QuickMenuTile.THEME_TOGGLE -> {
             val isDark = settings.themeMode == ThemeMode.DARK || settings.epubBackgroundColor.uppercase() in listOf("#121212", "#1A2332")
@@ -2272,7 +2305,14 @@ fun QuickMenuTileView(
                         QuickMenuTile.TOC -> onOpenToc()
                         QuickMenuTile.AUTO_SCROLL -> onSettingsChanged(settings.copy(enableAutoScroll = !settings.enableAutoScroll))
                         QuickMenuTile.RSVP -> onRsvpClick()
-                        QuickMenuTile.NIGHT_MODE -> onSettingsChanged(settings.copy(enableNightEyeStrainMode = !settings.enableNightEyeStrainMode))
+                        QuickMenuTile.NIGHT_MODE -> {
+                            val isEpub = currentBook.formatType == BookFormat.EPUB
+                            if (isEpub) {
+                                onSettingsChanged(settings.copy(epubEnableNightEyeStrainMode = !settings.epubEnableNightEyeStrainMode))
+                            } else {
+                                onSettingsChanged(settings.copy(cbzEnableNightEyeStrainMode = !settings.cbzEnableNightEyeStrainMode))
+                            }
+                        }
                         QuickMenuTile.BOOKMARK -> { /* しおり追加は ViewModel 経由 */ }
                         QuickMenuTile.THEME_TOGGLE -> {
                             val isDk = settings.themeMode == ThemeMode.DARK || settings.epubBackgroundColor.uppercase() in listOf("#121212", "#1A2332")
@@ -2694,9 +2734,15 @@ fun ReaderPreview(settings: AppSettings, modifier: Modifier = Modifier) {
         if (uriStr != null) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
+                    context.cacheDir.listFiles()?.forEach { file ->
+                        if (file.name.startsWith("active_preview_font_")) {
+                            file.delete()
+                        }
+                    }
                     val uri = Uri.parse(uriStr)
+                    val fontHash = uriStr.hashCode().toString()
                     val extension = if (uriStr.lowercase().endsWith(".otf")) "otf" else "ttf"
-                    val tempFile = java.io.File(context.cacheDir, "active_preview_font.$extension")
+                    val tempFile = java.io.File(context.cacheDir, "active_preview_font_${fontHash}.$extension")
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         tempFile.outputStream().use { output ->
                             input.copyTo(output)
@@ -3016,7 +3062,7 @@ fun RsvpDialog(
                             text = word,
                             fontSize = 40.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (settings.enableNightEyeStrainMode) Color(0xFFFF3B30) else Color.White,
+                            color = if (settings.epubEnableNightEyeStrainMode) Color(0xFFFF3B30) else Color.White,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }

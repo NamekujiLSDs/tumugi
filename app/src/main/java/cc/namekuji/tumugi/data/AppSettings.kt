@@ -44,7 +44,6 @@ data class AppSettings(
     // Additional settings
     val enableBlueLightFilter: Boolean = false,
     val blueLightFilterOpacity: Float = 0.15f,
-    val enablePaperTexture: Boolean = false,
     val brightnessValue: Float = -1f,
     val restoreBrightness: Boolean = true,
     val tapZoneMapping: Int = 0,
@@ -104,7 +103,16 @@ data class AppSettings(
     val widgetPinFavorites: Boolean = false,
     val bookshelfPinFavorites: Boolean = true,
     val navTapScrollAmount: String = "PAGE_1",
-    val navVolumeScrollAmount: String = "PAGE_1"
+    val navVolumeScrollAmount: String = "PAGE_1",
+    val quickMenuPadding: Int = 12,
+    val readerTopMargin: Int = 0,
+    val readerBottomMargin: Int = 0,
+    val epubEnableBlueLightFilter: Boolean = false,
+    val epubBlueLightFilterOpacity: Float = 0.15f,
+    val epubEnableNightEyeStrainMode: Boolean = false,
+    val cbzEnableBlueLightFilter: Boolean = false,
+    val cbzBlueLightFilterOpacity: Float = 0.15f,
+    val cbzEnableNightEyeStrainMode: Boolean = false
 )
 
 class SettingsConverters {
